@@ -14,11 +14,10 @@ import stripe
 # Environment / Config Setup
 # ----------------------------------------------------------------------
 
-TOKEN = os.getenv("BOT_TOKEN", "").strip()
+TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    # Fallback to token.txt for local development
-    with open("token.txt", "r") as f:
-        TOKEN = f.read().strip()
+    raise ValueError("❌ BOT_TOKEN not found. Please set it as an environment variable.")
+
 
 MAINTENANCE = os.getenv("MAINTENANCE", "false").lower() == "true"
 ENV = os.getenv("ENV", "dev")  # dev / prod
