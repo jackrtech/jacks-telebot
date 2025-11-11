@@ -1,0 +1,28 @@
+{
+  "shop_name": "Sticker Shop",
+  "currency": "GBP",
+  "symbol": "£",
+
+  "delivery_fee": 2.50,
+  "free_delivery_threshold": 10.00,
+
+         
+  "stripe_secret_key": "sk_test_51SSLXMDnVnwsdmmq9d320wCIfbCCNRjp5mDUzG8GJi2431tWMpelPOmeHfdUV9DAB2IqQEsGYzorWQ0Kj4MoUNrl00tkeXKnv8",
+  "success_url": "https://example.com/success",
+  "cancel_url": "https://example.com/cancel",
+
+  "catalog": {
+    "Frog Sticker": {
+      "emoji": "🐸",
+      "price": 1.50
+    },
+    "Cat Sticker": {
+      "emoji": "🐱",
+      "price": 1.75
+    },
+    "Dog Sticker": {
+      "emoji": "🐶",
+      "price": 2.00
+    }
+  }
+}
