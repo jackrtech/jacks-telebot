@@ -1,0 +1,21 @@
+nohup: ignoring input
+/usr/lib/python3/dist-packages/requests/__init__.py:87: RequestsDependencyWarning: urllib3 (2.2.3) or chardet (4.0.0) doesn't match a supported version!
+  warnings.warn("urllib3 ({}) or chardet ({}) doesn't match a supported "
+INFO:__main__:💡 Starting bot in POLLING mode
+✅ Sticker Shop Bot running with Stripe Checkout & delivery rules...
+Traceback (most recent call last):
+  File "/home/user/Telegram-Bot/bot.py", line 966, in <module>
+    bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
+  File "/home/user/.local/lib/python3.10/site-packages/telebot/__init__.py", line 1103, in infinity_polling
+    self.__skip_updates()
+  File "/home/user/.local/lib/python3.10/site-packages/telebot/__init__.py", line 673, in __skip_updates
+    self.get_updates(offset=-1)
+  File "/home/user/.local/lib/python3.10/site-packages/telebot/__init__.py", line 660, in get_updates
+    json_updates = apihelper.get_updates(
+  File "/home/user/.local/lib/python3.10/site-packages/telebot/apihelper.py", line 339, in get_updates
+    return _make_request(token, method_url, params=payload)
+  File "/home/user/.local/lib/python3.10/site-packages/telebot/apihelper.py", line 168, in _make_request
+    json_result = _check_result(method_name, result)
+  File "/home/user/.local/lib/python3.10/site-packages/telebot/apihelper.py", line 197, in _check_result
+    raise ApiTelegramException(method_name, result, result_json)
+telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 409. Description: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
