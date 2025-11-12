@@ -520,7 +520,10 @@ def order(message):
 
     kb = InlineKeyboardMarkup(row_width=2)
     for name, data in catalog.items():
-        kb.add(InlineKeyboardButton(f"{data['emoji']} {name}", callback_data=f"add|{name}"))
+        kb.add(InlineKeyboardButton(f"{data[\'emoji\']} {name}", callback_data=f"add|{name}"))
+
+    # NEW persistent Checkout button
+    kb.add(InlineKeyboardButton("🧾 Checkout", callback_data="begin_checkout"))
 
     msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
     user_menu_messages[user_id].append((chat_id, msg.message_id))
@@ -938,3 +941,34 @@ if __name__ == "__main__":
         logger.info("💡 Starting bot in POLLING mode")
         print("✅ Sticker Shop Bot running with Stripe Checkout & delivery rules...")
         bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
+
+
+# ----------------------------------------------------------------------
+# Stripe Webhook Stub (for Phase 2 receipts after payment)
+# ----------------------------------------------------------------------
+"""
+# Example Flask webhook for Stripe payment confirmation
+# Uncomment and expand when ready to send Telegram receipts after payment
+
+from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route("/stripe-webhook", methods=["POST"])
+def stripe_webhook():
+    payload = request.data
+    sig_header = request.headers.get("Stripe-Signature")
+    endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
+    except Exception as e:
+        return f"Webhook error: {e}", 400
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        order_id = session.get("metadata", {}).get("order_id")
+        username = session.get("metadata", {}).get("telegram_user")
+        # TODO: mark order as paid in CSV
+        # bot.send_message(chat_id_of_user, f"🧾 Payment confirmed! Your order {order_id} is now complete.")
+    return "", 200
+"""

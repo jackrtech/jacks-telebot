@@ -3,3 +3,4 @@ orders.csv
 order_counter.json
 __pycache__/
 *.pyc
+old_bot.py
