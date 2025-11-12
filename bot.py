@@ -1,3 +1,4 @@
+
 import os
 import re
 import csv
@@ -11,13 +12,23 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import stripe
 
 # ----------------------------------------------------------------------
-# Environment / Config Setup
+# Token / Environment / Config Setup
 # ----------------------------------------------------------------------
 
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN not found. Please set it as an environment variable.")
+# Prefer reading Telegram bot token from token.txt; fall back to BOT_TOKEN env
+TOKEN = None
+try:
+    if os.path.exists("token.txt"):
+        with open("token.txt", "r", encoding="utf-8") as f:
+            TOKEN = f.read().strip()
+except Exception:
+    TOKEN = None
 
+if not TOKEN:
+    TOKEN = os.getenv("BOT_TOKEN", "").strip()
+
+if not TOKEN:
+    raise ValueError("❌ No Telegram token found. Put it in token.txt or set BOT_TOKEN env var.")
 
 MAINTENANCE = os.getenv("MAINTENANCE", "false").lower() == "true"
 ENV = os.getenv("ENV", "dev")  # dev / prod
@@ -33,7 +44,7 @@ bot = telebot.TeleBot(TOKEN)
 # Load configuration (shop, catalog, admins, delivery, Stripe)
 # ----------------------------------------------------------------------
 
-with open("config.json", "r") as f:
+with open("config.json", "r", encoding="utf-8") as f:
     cfg = json.load(f)
 
 SHOP_NAME = cfg.get("shop_name", "Sticker Shop")
@@ -49,15 +60,20 @@ ADMIN_IDS = cfg.get("admin_ids", [])
 NOTIFY_CHANNEL_ID = cfg.get("notify_channel_id")
 
 # Stripe configuration
-STRIPE_SECRET_KEY = cfg.get("stripe_secret_key", "").strip()
+# Prefer stripe.txt, then environment, then (optionally) config.json fallback
+STRIPE_SECRET_KEY = ""
+if os.path.exists("stripe.txt"):
+    with open("stripe.txt", "r", encoding="utf-8") as _f:
+        STRIPE_SECRET_KEY = _f.read().strip()
+if not STRIPE_SECRET_KEY:
+    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+if not STRIPE_SECRET_KEY:
+    STRIPE_SECRET_KEY = cfg.get("stripe_secret_key", "").strip()
+
 SUCCESS_URL = cfg.get("success_url", "https://example.com/success")
 CANCEL_URL = cfg.get("cancel_url", "https://example.com/cancel")
 
-if STRIPE_SECRET_KEY:
-    stripe.api_key = STRIPE_SECRET_KEY
-else:
-    stripe.api_key = None  # We'll check before using
-
+stripe.api_key = STRIPE_SECRET_KEY or None
 # Catalog configuration
 raw_catalog = cfg.get("catalog", {})
 catalog = {}
@@ -107,7 +123,7 @@ csv_filename = "orders.csv"
 
 if not os.path.exists(csv_filename) or os.path.getsize(csv_filename) == 0:
     # Create file with headers
-    with open(csv_filename, "w", newline="") as f:
+    with open(csv_filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
             "order_id",
@@ -131,7 +147,7 @@ if not os.path.exists(csv_filename) or os.path.getsize(csv_filename) == 0:
 counter_file = "order_counter.json"
 
 if os.path.exists(counter_file):
-    with open(counter_file, "r") as f:
+    with open(counter_file, "r", encoding="utf-8") as f:
         order_counters = json.load(f)
 else:
     order_counters = {}
@@ -142,7 +158,7 @@ def generate_order_id():
     today = datetime.now().strftime("%y%m%d")
     count = order_counters.get(today, 0) + 1
     order_counters[today] = count
-    with open(counter_file, "w") as f:
+    with open(counter_file, "w", encoding="utf-8") as f:
         json.dump(order_counters, f)
     return f"ORD-{today}-{count:02d}"
 
@@ -520,10 +536,10 @@ def order(message):
 
     kb = InlineKeyboardMarkup(row_width=2)
     for name, data in catalog.items():
-        kb.add(InlineKeyboardButton(f"{data[\'emoji\']} {name}", callback_data=f"add|{name}"))
+        kb.add(InlineKeyboardButton(f"{data['emoji']} {name}", callback_data=f"add|{name}"))
 
-    # NEW persistent Checkout button
-    kb.add(InlineKeyboardButton("🧾 Checkout", callback_data="begin_checkout"))
+    # Persistent Open Cart button (replaces Checkout in catalog view)
+    kb.add(InlineKeyboardButton("🛒 Open Cart", callback_data="open_cart"))
 
     msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
     user_menu_messages[user_id].append((chat_id, msg.message_id))
@@ -552,11 +568,18 @@ def add_to_cart(callback):
     user_carts.setdefault(user_id, {})
     user_carts[user_id][item] = user_carts[user_id].get(item, 0) + 1
 
-    bot.answer_callback_query(callback.id, f"✅ Added {item}!")
+    bot.answer_callback_query(callback.id, f"🛒 Added {item}!")
 
-    # If a cart message exists, refresh it inline
-    if user_cart_message.get(user_id):
-        refresh_cart_message(user_id, chat_id)
+    # Always show or refresh cart (auto open on first add)
+    refresh_cart_message(user_id, chat_id)
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "open_cart")
+def open_cart_callback(callback):
+    user_id = callback.from_user.id
+    chat_id = callback.message.chat.id
+    bot.answer_callback_query(callback.id)
+    refresh_cart_message(user_id, chat_id)
 
 
 @bot.message_handler(commands=["cart"])
@@ -791,7 +814,7 @@ def confirm_order(callback):
     )
 
     # Save order as pending in CSV
-    with open(csv_filename, "a", newline="") as f:
+    with open(csv_filename, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
             order_id,
@@ -908,7 +931,7 @@ def last_orders(message):
     if not is_admin(message.from_user.id):
         return
     try:
-        with open(csv_filename, "r") as f:
+        with open(csv_filename, "r", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
         if not rows:
             bot.reply_to(message, "No orders found.")
