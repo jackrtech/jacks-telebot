@@ -8,57 +8,38 @@ from decimal import Decimal, ROUND_HALF_UP
 
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import stripe
 
 # ----------------------------------------------------------------------
 # Environment / Config Setup
 # ----------------------------------------------------------------------
-
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN", "").strip()
 if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN not found. Please set it as an environment variable.")
-
+    with open("token.txt", "r") as f:
+        TOKEN = f.read().strip()
 
 MAINTENANCE = os.getenv("MAINTENANCE", "false").lower() == "true"
 ENV = os.getenv("ENV", "dev")  # dev / prod
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# Session timeout for cart / checkout flows
 SESSION_TIMEOUT_SECONDS = 3600  # 1 hour
 
-# Initialize bot
 bot = telebot.TeleBot(TOKEN)
 
 # ----------------------------------------------------------------------
-# Load configuration (shop, catalog, admins, delivery, Stripe)
+# Load configuration (shop, catalog, admins)
 # ----------------------------------------------------------------------
-
 with open("config.json", "r") as f:
     cfg = json.load(f)
 
 SHOP_NAME = cfg.get("shop_name", "Sticker Shop")
 CURRENCY = cfg.get("currency", "GBP")
 SYMBOL = cfg.get("symbol", "£")
-
-# Delivery configuration
-DELIVERY_FEE = Decimal(str(cfg.get("delivery_fee", "2.50")))
-FREE_DELIVERY_THRESHOLD = Decimal(str(cfg.get("free_delivery_threshold", "10.00")))
-
-# Admin / notifications
 ADMIN_IDS = cfg.get("admin_ids", [])
 NOTIFY_CHANNEL_ID = cfg.get("notify_channel_id")
 
-# Stripe configuration
-STRIPE_SECRET_KEY = cfg.get("stripe_secret_key", "").strip()
-SUCCESS_URL = cfg.get("success_url", "https://example.com/success")
-CANCEL_URL = cfg.get("cancel_url", "https://example.com/cancel")
+DELIVERY_FEE = Decimal(str(cfg.get("delivery_fee", 2.50)))
+FREE_DELIVERY_THRESHOLD = Decimal(str(cfg.get("free_delivery_threshold", 10.00)))
 
-if STRIPE_SECRET_KEY:
-    stripe.api_key = STRIPE_SECRET_KEY
-else:
-    stripe.api_key = None  # We'll check before using
-
-# Catalog configuration
 raw_catalog = cfg.get("catalog", {})
 catalog = {}
 for name, data in raw_catalog.items():
@@ -70,26 +51,14 @@ for name, data in raw_catalog.items():
     }
 
 # ----------------------------------------------------------------------
-# In-memory data stores
+# Data stores
 # ----------------------------------------------------------------------
-
-# Cart: user_id -> { item_name: qty }
 user_carts = {}
-
-# Checkout state: user_id -> { "step": int, "data": {...} }
 user_states = {}
-
-# Last user activity for timeout: user_id -> datetime
 last_activity = {}
-
-# Track menu messages so we can mark them outdated: user_id -> [(chat_id, msg_id), ...]
 user_menu_messages = {}
-
-# Track the single "live" cart message per user for inline refresh:
-# user_id -> (chat_id, msg_id)
 user_cart_message = {}
 
-# Delivery flow configuration
 delivery_steps = ["name", "house", "street", "city", "postcode"]
 delivery_prompts = {
     "name": "📝 (1/5) Please enter your *Full Name:*",
@@ -100,36 +69,33 @@ delivery_prompts = {
 }
 
 # ----------------------------------------------------------------------
-# CSV order storage setup
+# CSV setup
 # ----------------------------------------------------------------------
-
 csv_filename = "orders.csv"
-
 if not os.path.exists(csv_filename) or os.path.getsize(csv_filename) == 0:
-    # Create file with headers
     with open(csv_filename, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "order_id",
-            "username",
-            "items",
-            "name",
-            "house",
-            "street",
-            "city",
-            "postcode",
-            "status",
-            "date",
-            "order_total",
-            "currency",
-        ])
+        writer.writerow(
+            [
+                "order_id",
+                "username",
+                "items",
+                "name",
+                "house",
+                "street",
+                "city",
+                "postcode",
+                "status",
+                "date",
+                "order_total",
+                "currency",
+            ]
+        )
 
 # ----------------------------------------------------------------------
-# Order counter for friendly IDs
+# Order counter file setup
 # ----------------------------------------------------------------------
-
 counter_file = "order_counter.json"
-
 if os.path.exists(counter_file):
     with open(counter_file, "r") as f:
         order_counters = json.load(f)
@@ -138,7 +104,6 @@ else:
 
 
 def generate_order_id():
-    """Create a friendly order ID: ORD-YYMMDD-XX"""
     today = datetime.now().strftime("%y%m%d")
     count = order_counters.get(today, 0) + 1
     order_counters[today] = count
@@ -147,17 +112,19 @@ def generate_order_id():
     return f"ORD-{today}-{count:02d}"
 
 
+
 # ----------------------------------------------------------------------
 # Helper functions: sessions, maintenance, menus, validation
 # ----------------------------------------------------------------------
 
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
 def is_down(chat_id):
-    """If maintenance mode is enabled, inform the user and block the action."""
     if MAINTENANCE:
         bot.send_message(
             chat_id,
-            "⚙️ Sorry! The shop is currently *down for maintenance.*\n\n"
-            "Please try again soon.",
+            "⚙️ Sorry! The shop is currently *down for maintenance.*\n\nPlease try again soon.",
             parse_mode="Markdown",
         )
         return True
@@ -165,114 +132,93 @@ def is_down(chat_id):
 
 
 def has_active_session(user_id):
-    """Return True if user has cart or checkout state."""
-    return (
-        (user_id in user_states and bool(user_states[user_id]))
-        or (user_id in user_carts and bool(user_carts[user_id]))
+    return (user_id in user_states and user_states[user_id]) or (
+        user_id in user_carts and bool(user_carts[user_id])
     )
 
 
 def update_activity(user_id):
-    """Bump last activity timestamp for timeout tracking."""
     last_activity[user_id] = datetime.now()
 
 
 def clear_session(user_id):
-    """Clear cart and checkout state for the user."""
     user_carts.pop(user_id, None)
     user_states.pop(user_id, None)
     last_activity.pop(user_id, None)
-    # We intentionally do not delete user_cart_message; old messages just become stale.
 
 
 def check_and_handle_expiry(user_id, chat_id, is_callback=False, callback_id=None):
-    """If session expired, clear and notify. Return True if expired."""
     if not has_active_session(user_id):
         return False
-
     ts = last_activity.get(user_id)
     if not ts:
         return False
-
     if datetime.now() - ts > timedelta(seconds=SESSION_TIMEOUT_SECONDS):
         clear_session(user_id)
         if is_callback and callback_id:
-            try:
-                bot.answer_callback_query(callback_id, "⏰ Session expired.")
-            except Exception:
-                pass
+            bot.answer_callback_query(callback_id, "⏰ Session expired.")
         bot.send_message(
             chat_id,
             "⏰ Your session has expired. Please start again with /order.",
         )
         return True
-
     return False
 
 
 def mark_old_menus_outdated(user_id):
-    """Edit previous /order messages for this user and mark them outdated."""
     entries = user_menu_messages.get(user_id, [])
     if not entries:
         return
-
     for chat_id, msg_id in entries:
         try:
-            bot.edit_message_text(
+            bot.edit_message_caption(
                 chat_id=chat_id,
                 message_id=msg_id,
-                text="❌ This menu is outdated. Please use /order to see the latest stickers.",
-                parse_mode="Markdown",
+                caption="❌ This menu is outdated. Please use /order again.",
             )
         except Exception:
-            pass
-
+            try:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    text="❌ This menu is outdated. Please use /order again.",
+                )
+            except Exception:
+                pass
     user_menu_messages[user_id] = []
 
 
 def build_cart_text(user_id):
-    """Build the cart summary including delivery fee rules."""
     cart = user_carts.get(user_id, {})
     if not cart:
         return ("🛒 Your cart is empty. Use /order to add stickers.", False)
-
     text = "🛒 *Your Cart:*\n\n"
     total_items = 0
-    subtotal = Decimal("0.00")
-
+    total_price = Decimal("0.00")
     for item, qty in cart.items():
         if item not in catalog:
             continue
         price = catalog[item]["price"]
-        line_total = (price * qty).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        text += f"{qty}x {catalog[item]['emoji']} {item} — {SYMBOL}{line_total:.2f}\n"
+        subtotal = (price * qty).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        text += f"{qty}x {catalog[item]['emoji']} {item} — {SYMBOL}{subtotal:.2f}\n"
         total_items += qty
-        subtotal += line_total
+        total_price += subtotal
 
-    # Delivery logic
-    if subtotal >= FREE_DELIVERY_THRESHOLD:
-        delivery = Decimal("0.00")
-        delivery_line = f"🚚 *Free delivery!* (orders over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})"
+    # Apply delivery fee/discount logic
+    delivery_fee = DELIVERY_FEE if total_price < FREE_DELIVERY_THRESHOLD else Decimal("0.00")
+    total_price += delivery_fee
+
+    if delivery_fee > 0:
+        text += f"\n🚚 Delivery: {SYMBOL}{delivery_fee:.2f}"
     else:
-        delivery = DELIVERY_FEE
-        delivery_line = f"🚚 Delivery fee: {SYMBOL}{DELIVERY_FEE:.2f}"
+        text += f"\n🚚 Delivery: *FREE*"
 
-    total = (subtotal + delivery).quantize(Decimal("0.01"), ROUND_HALF_UP)
-
-    text += (
-        f"\nTotal items: {total_items}\n"
-        f"Subtotal: {SYMBOL}{subtotal:.2f}\n"
-        f"{delivery_line}\n"
-        f"💰 *Total: {SYMBOL}{total:.2f}*"
-    )
-
+    text += f"\n\nTotal items: {total_items}\n💰 *Total: {SYMBOL}{total_price:.2f}*"
     return (text, True)
 
 
 def refresh_cart_message(user_id, chat_id):
-    """Create or update the single cart message with inline controls."""
     text, has_items = build_cart_text(user_id)
-
     kb = InlineKeyboardMarkup()
     if has_items:
         kb.add(
@@ -284,7 +230,6 @@ def refresh_cart_message(user_id, chat_id):
         kb.add(InlineKeyboardButton("🛍 Continue Shopping", callback_data="continue_order"))
 
     existing = user_cart_message.get(user_id)
-
     if existing:
         e_chat_id, e_msg_id = existing
         try:
@@ -297,8 +242,7 @@ def refresh_cart_message(user_id, chat_id):
             )
             return
         except Exception:
-            pass  # fall through and send new
-
+            pass
     msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
     user_cart_message[user_id] = (chat_id, msg.message_id)
 
@@ -440,23 +384,25 @@ def is_admin(user_id):
 # Core commands: /start, /restart, /help
 # ----------------------------------------------------------------------
 
+# ----------------------------------------------------------------------
+# Core Commands
+# ----------------------------------------------------------------------
 @bot.message_handler(commands=["start"])
 def start(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
-
     if is_down(chat_id):
         return
-
     update_activity(user_id)
-
+    if user_carts.get(user_id):
+        extra = "You still have items in your cart — open /cart to review.\n\n"
+    else:
+        extra = ""
     bot.send_message(
         chat_id,
-        f"👋 Welcome to *{SHOP_NAME}!*\n\n"
-        f"🚚 Delivery is {SYMBOL}{DELIVERY_FEE:.2f}, "
-        f"*free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f}!* 🎉\n\n"
-        "Use /order to browse stickers or /cart to view your cart.\n"
-        "💡 Use /restart if anything feels stuck.",
+        f"👋 Welcome to *{SHOP_NAME}!*\n\n{extra}"
+        "Use /order to browse stickers or /cart to view your cart.\n\n"
+        "💡 Use /restart to start fresh.",
         parse_mode="Markdown",
     )
 
@@ -465,10 +411,8 @@ def start(message):
 def restart(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
-
     if is_down(chat_id):
         return
-
     clear_session(user_id)
     bot.send_message(chat_id, "🔄 Session reset. Use /order to start again.")
 
@@ -487,86 +431,87 @@ def help_cmd(message):
 
 
 # ----------------------------------------------------------------------
-# /order - Show catalog with inline add buttons
+# Catalog browsing (with persistent Checkout button)
 # ----------------------------------------------------------------------
-
 @bot.message_handler(commands=["order"])
 def order(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
-
     if is_down(chat_id):
         return
-
     update_activity(user_id)
-
     mark_old_menus_outdated(user_id)
     user_menu_messages[user_id] = []
 
-    if not catalog:
-        msg = bot.send_message(chat_id, "⚠️ No products are available right now.")
-        user_menu_messages[user_id].append((chat_id, msg.message_id))
+    header = bot.send_message(chat_id, "🛍 *Browse our sticker collection:*", parse_mode="Markdown")
+    user_menu_messages[user_id].append((chat_id, header.message_id))
+
+    for name, data in catalog.items():
+        price_text = f"{SYMBOL}{data['price']:.2f}"
+        caption = f"{data['emoji']} {name}\n💷 {price_text} each"
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton(f"Add {data['emoji']} {name} ({price_text})", callback_data=f"add|{name}"))
+        try:
+            with open(data["image"], "rb") as img:
+                msg = bot.send_photo(chat_id, img, caption=caption, reply_markup=kb)
+                user_menu_messages[user_id].append((chat_id, msg.message_id))
+        except FileNotFoundError:
+            msg = bot.send_message(chat_id, f"⚠️ Image for {name} missing.")
+            user_menu_messages[user_id].append((chat_id, msg.message_id))
+
+    # 🆕 Persistent Checkout button below the product list
+    footer_kb = InlineKeyboardMarkup()
+    footer_kb.add(InlineKeyboardButton("✅ Checkout", callback_data="checkout_now"))
+    footer = bot.send_message(chat_id, "When ready, tap below to checkout.", reply_markup=footer_kb)
+    user_menu_messages[user_id].append((chat_id, footer.message_id))
+
+
+# ----------------------------------------------------------------------
+# Persistent Checkout button handler
+# ----------------------------------------------------------------------
+@bot.callback_query_handler(func=lambda c: c.data == "checkout_now")
+def checkout_now(callback):
+    user_id = callback.from_user.id
+    chat_id = callback.message.chat.id
+    cart = user_carts.get(user_id, {})
+
+    if not cart:
+        bot.answer_callback_query(callback.id, "🛒 Your cart is empty! Add items before checkout.")
         return
 
-    text = "🛍 *Our Stickers:*\n\n"
-    for name, data in catalog.items():
-        text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
-
-    text += (
-        f"\n🚚 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
-        f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n"
-        "Tap a button below to add to your cart 👇"
-    )
-
-    kb = InlineKeyboardMarkup(row_width=2)
-    for name, data in catalog.items():
-        kb.add(InlineKeyboardButton(f"{data['emoji']} {name}", callback_data=f"add|{name}"))
-
-    msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
-    user_menu_messages[user_id].append((chat_id, msg.message_id))
+    bot.answer_callback_query(callback.id, "✅ Proceeding to checkout...")
+    begin_checkout(callback)
 
 
 # ----------------------------------------------------------------------
-# Cart operations
+# Cart management
 # ----------------------------------------------------------------------
-
 @bot.callback_query_handler(func=lambda c: c.data.startswith("add|"))
 def add_to_cart(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-
     if check_and_handle_expiry(user_id, chat_id, is_callback=True, callback_id=callback.id):
         return
-
     item = callback.data.split("|", 1)[1]
-
     if item not in catalog:
-        bot.answer_callback_query(callback.id, "⚠️ Item no longer available.")
+        bot.answer_callback_query(callback.id, "⚠️ Menu outdated. Use /order.")
+        bot.send_message(chat_id, "⚠️ Please use /order for current stickers.")
         return
-
     update_activity(user_id)
-
     user_carts.setdefault(user_id, {})
     user_carts[user_id][item] = user_carts[user_id].get(item, 0) + 1
-
     bot.answer_callback_query(callback.id, f"✅ Added {item}!")
-
-    # If a cart message exists, refresh it inline
     if user_cart_message.get(user_id):
         refresh_cart_message(user_id, chat_id)
-
 
 @bot.message_handler(commands=["cart"])
 def show_cart(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
-
     if is_down(chat_id):
         return
-
     if check_and_handle_expiry(user_id, chat_id):
         return
-
     update_activity(user_id)
     refresh_cart_message(user_id, chat_id)
 
@@ -575,12 +520,9 @@ def show_cart(message):
 def clear_cart(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-
     if check_and_handle_expiry(user_id, chat_id, is_callback=True, callback_id=callback.id):
         return
-
     update_activity(user_id)
-
     user_carts[user_id] = {}
     bot.answer_callback_query(callback.id, "🗑 Cart cleared!")
     refresh_cart_message(user_id, chat_id)
@@ -590,16 +532,12 @@ def clear_cart(callback):
 def handle_cart_actions(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-
     if check_and_handle_expiry(user_id, chat_id, is_callback=True, callback_id=callback.id):
         return
-
     update_activity(user_id)
-
     if callback.data == "continue_order":
         bot.answer_callback_query(callback.id)
         order(callback.message)
-
     elif callback.data == "begin_checkout":
         bot.answer_callback_query(callback.id)
         begin_checkout(callback)
@@ -608,59 +546,72 @@ def handle_cart_actions(callback):
 def begin_checkout(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-
     cart = user_carts.get(user_id, {})
     if not cart:
         bot.send_message(chat_id, "🛍 Your cart is empty! Add stickers first with /order.")
         return
-
-    if check_and_handle_expiry(user_id, chat_id, is_callback=True, callback_id=callback.id):
-        return
-
     update_activity(user_id)
-
     user_states[user_id] = {"step": 0, "data": {}}
-
-    subtotal = sum(
-        (catalog[item]["price"] * qty for item, qty in cart.items() if item in catalog),
-        Decimal("0.00"),
+    total_price = sum(
+        (catalog[item]["price"] * qty for item, qty in cart.items()), Decimal("0.00")
     ).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-    lines = [f"{qty}x {item}" for item, qty in cart.items() if item in catalog]
-    summary = "\n".join(lines)
+    delivery_fee = DELIVERY_FEE if total_price < FREE_DELIVERY_THRESHOLD else Decimal("0.00")
+    total_price += delivery_fee
+
+    summary_lines = [f"{qty}x {item}" for item, qty in cart.items()]
+    summary = "\n".join(summary_lines)
+    delivery_text = (
+        f"🚚 Delivery: {SYMBOL}{delivery_fee:.2f}"
+        if delivery_fee > 0
+        else "🚚 Delivery: FREE"
+    )
 
     bot.send_message(
         chat_id,
-        f"🧾 *Your Order Summary:*\n\n"
-        f"{summary}\n\n"
-        f"Current subtotal: {SYMBOL}{subtotal:.2f}\n"
-        f"🚚 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
-        f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n\n"
-        "Now let's collect your delivery details.",
+        f"🧾 *Your Order Summary:*\n\n{summary}\n\n{delivery_text}\n💰 *Total: {SYMBOL}{total_price:.2f}*\n\nLet's collect your delivery details.",
         parse_mode="Markdown",
     )
-
     prompt_next_field(chat_id, "name", step=0)
 
 
 # ----------------------------------------------------------------------
-# Checkout navigation (back / edit)
+# Checkout flow
 # ----------------------------------------------------------------------
+def prompt_next_field(chat_id, field, step):
+    kb = InlineKeyboardMarkup()
+    if step == 0:
+        kb.add(InlineKeyboardButton("🛍 Continue Shopping", callback_data="continue_order"))
+    else:
+        kb.add(InlineKeyboardButton("↩️ /back", callback_data="back"))
+    bot.send_message(chat_id, delivery_prompts[field], parse_mode="Markdown", reply_markup=kb)
+
+
+def validate_field(field, text):
+    t = text.strip()
+    if field == "name":
+        return bool(re.match(r"^[A-Za-z\s]{3,}$", t)) and " " in t
+    if field == "house":
+        return bool(re.match(r"^[A-Za-z0-9\s]{1,10}$", t))
+    if field == "street":
+        return len(t) >= 3 and any(c.isalpha() for c in t)
+    if field == "city":
+        return len(t) >= 2 and any(c.isalpha() for c in t)
+    if field == "postcode":
+        return bool(re.match(r"^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$", t.upper()))
+    return True
+
 
 @bot.callback_query_handler(func=lambda c: c.data == "back")
 def go_back(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-
     if check_and_handle_expiry(user_id, chat_id, is_callback=True, callback_id=callback.id):
         return
-
     if user_id not in user_states:
         bot.answer_callback_query(callback.id, "No active checkout.")
         return
-
     step = user_states[user_id]["step"]
-
     if step > 0:
         user_states[user_id]["step"] -= 1
         prev_field = delivery_steps[user_states[user_id]["step"]]
@@ -669,29 +620,66 @@ def go_back(callback):
         prompt_next_field(chat_id, prev_field, user_states[user_id]["step"])
         update_activity(user_id)
     else:
-        bot.answer_callback_query(callback.id, "You're already at the first step.")
+        bot.answer_callback_query(callback.id, "You're at the first step.")
 
 
 @bot.callback_query_handler(func=lambda c: c.data == "edit_address")
 def edit_address(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-
     if check_and_handle_expiry(user_id, chat_id, is_callback=True, callback_id=callback.id):
         return
-
     if user_id not in user_states or "data" not in user_states[user_id]:
         bot.answer_callback_query(callback.id, "No address to edit.")
         return
-
     user_states[user_id]["step"] = 0
-    bot.answer_callback_query(callback.id, "✏️ Let's edit your address.")
+    bot.answer_callback_query(callback.id, "✏️ Let’s edit your address.")
     prompt_next_field(chat_id, "name", step=0)
 
 
-# ----------------------------------------------------------------------
-# Text input handler during checkout
-# ----------------------------------------------------------------------
+def send_order_review(chat_id, user_id):
+    info = user_states[user_id]["data"]
+    cart = user_carts.get(user_id, {})
+    if not cart:
+        bot.send_message(chat_id, "🛒 Your cart is empty. Please /order again.")
+        clear_session(user_id)
+        return
+    lines = [
+        f"{qty}x {catalog[item]['emoji']} {item} — {SYMBOL}{(catalog[item]['price'] * qty):.2f}"
+        for item, qty in cart.items() if item in catalog
+    ]
+    total_price = sum(
+        (catalog[item]["price"] * qty for item, qty in cart.items() if item in catalog),
+        Decimal("0.00"),
+    ).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+    delivery_fee = DELIVERY_FEE if total_price < FREE_DELIVERY_THRESHOLD else Decimal("0.00")
+    total_price += delivery_fee
+
+    delivery_text = (
+        f"🚚 Delivery: {SYMBOL}{delivery_fee:.2f}"
+        if delivery_fee > 0
+        else "🚚 Delivery: FREE"
+    )
+
+    summary = (
+        f"✅ *Confirm your address and cart:*\n\n"
+        f"🛍 Stickers:\n" + "\n".join(lines) +
+        f"\n\n{delivery_text}\n💰 *Total: {SYMBOL}{total_price:.2f}*\n\n"
+        f"👤 Name: {info['name']}\n"
+        f"🏠 House: {info['house']}\n"
+        f"🛣 Street: {info['street']}\n"
+        f"🌆 City: {info['city']}\n"
+        f"📮 Postcode: {info['postcode']}"
+    )
+    kb = InlineKeyboardMarkup()
+    kb.add(
+        InlineKeyboardButton("✅ Confirm", callback_data="confirm_details"),
+        InlineKeyboardButton("✏️ Edit Address", callback_data="edit_address"),
+        InlineKeyboardButton("↩️ /back", callback_data="back"),
+    )
+    bot.send_message(chat_id, summary, parse_mode="Markdown", reply_markup=kb)
+
 
 @bot.message_handler(func=lambda m: True)
 def handle_checkout_input(message):
@@ -708,12 +696,8 @@ def handle_checkout_input(message):
             return
 
         field = delivery_steps[step]
-
         if not validate_field(field, text):
-            bot.send_message(
-                chat_id,
-                f"⚠️ That doesn’t look like a valid {field}. Please try again.",
-            )
+            bot.send_message(chat_id, f"⚠️ That doesn’t look like a valid {field}. Please try again.")
             prompt_next_field(chat_id, field, step)
             return
 
@@ -729,12 +713,10 @@ def handle_checkout_input(message):
         prompt_next_field(chat_id, next_field, user_states[user_id]["step"])
         return
 
-    # Not in checkout: respond helpfully
     if text.startswith("/"):
         bot.send_message(
             chat_id,
-            "❓ Unknown command.\n"
-            "Use /order to browse, /cart to view your cart, or /restart to reset.",
+            "❓ Unknown command.\nUse /order to browse, /cart to view your cart, or /restart to reset.",
         )
     else:
         bot.send_message(
@@ -746,9 +728,8 @@ def handle_checkout_input(message):
 
 
 # ----------------------------------------------------------------------
-# Confirm Order → CSV + Stripe Checkout + Admin notify
+# Confirm Order → Save to CSV + Notify Admins
 # ----------------------------------------------------------------------
-
 @bot.callback_query_handler(func=lambda c: c.data == "confirm_details")
 def confirm_order(callback):
     user_id = callback.from_user.id
@@ -770,24 +751,17 @@ def confirm_order(callback):
         clear_session(user_id)
         return
 
-    subtotal = sum(
+    cart_summary = ", ".join([f"{qty}x {item}" for item, qty in cart.items() if item in catalog])
+    total_price = sum(
         (catalog[item]["price"] * qty for item, qty in cart.items() if item in catalog),
-        Decimal("0.00"),
+        Decimal("0.00")
     ).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-    if subtotal >= FREE_DELIVERY_THRESHOLD:
-        delivery = Decimal("0.00")
-    else:
-        delivery = DELIVERY_FEE
-
-    total = (subtotal + delivery).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    delivery_fee = DELIVERY_FEE if total_price < FREE_DELIVERY_THRESHOLD else Decimal("0.00")
+    total_price += delivery_fee
 
     order_id = generate_order_id()
-    cart_summary = ", ".join(
-        [f"{qty}x {item}" for item, qty in cart.items() if item in catalog]
-    )
 
-    # Save order as pending in CSV
     with open(csv_filename, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -801,86 +775,74 @@ def confirm_order(callback):
             info["postcode"],
             "pending",
             datetime.now().strftime("%Y-%m-%d %H:%M"),
-            f"{total:.2f}",
-            CURRENCY,
+            f"{total_price:.2f}",
+            CURRENCY
         ])
 
     bot.answer_callback_query(callback.id, "✅ Order saved!")
 
-    # Notify admins about new order
-    notify_admins(order_id, callback.from_user, cart, info, subtotal, delivery, total)
+    notify_admins(
+        order_id=order_id,
+        user=callback.from_user,
+        cart=cart,
+        info=info,
+        total=total_price
+    )
 
-    # If Stripe configured → create Checkout Session
-    if stripe.api_key:
-        try:
-            checkout_session = stripe.checkout.Session.create(
-                mode="payment",
-                payment_method_types=["card"],
-                line_items=[
-                    {
-                        "price_data": {
-                            "currency": CURRENCY.lower(),
-                            "product_data": {
-                                "name": f"{SHOP_NAME} Order {order_id}",
-                            },
-                            "unit_amount": int(total * 100),
-                        },
-                        "quantity": 1,
-                    }
-                ],
-                success_url=f"{SUCCESS_URL}?order_id={order_id}",
-                cancel_url=f"{CANCEL_URL}?order_id={order_id}",
-                metadata={
-                    "order_id": order_id,
-                    "telegram_user": callback.from_user.username or "",
-                },
-            )
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🛍 Make Another Order", callback_data="continue_order"))
 
-            pay_url = checkout_session.url
+    bot.send_message(
+        chat_id,
+        f"✅ Order *{order_id}* saved.\n"
+        f"💰 Total: {SYMBOL}{total_price:.2f}\n"
+        "We'll contact you soon for payment.",
+        parse_mode="Markdown",
+        reply_markup=kb
+    )
 
-            kb = InlineKeyboardMarkup()
-            kb.add(InlineKeyboardButton("💳 Pay Now", url=pay_url))
-            kb.add(InlineKeyboardButton("🛍 Make Another Order", callback_data="continue_order"))
-
-            bot.send_message(
-                chat_id,
-                f"✅ Order *{order_id}* saved.\n"
-                f"💰 Total: {SYMBOL}{total:.2f}\n"
-                "Tap below to complete your payment securely:",
-                parse_mode="Markdown",
-                reply_markup=kb,
-            )
-
-        except Exception as e:
-            # Fallback to manual payment if Stripe fails
-            bot.send_message(
-                chat_id,
-                "✅ Your order has been saved, but payment setup failed.\n"
-                "We'll contact you soon to arrange payment manually.\n"
-                f"Error: {e}",
-                parse_mode="Markdown",
-            )
-    else:
-        # No Stripe: old behaviour
-        kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton("🛍 Make Another Order", callback_data="continue_order"))
-
-        bot.send_message(
-            chat_id,
-            f"✅ Order *{order_id}* saved.\n"
-            f"💰 Total: {SYMBOL}{total:.2f}\n"
-            "We'll contact you soon for payment.",
-            parse_mode="Markdown",
-            reply_markup=kb,
-        )
-
-    # Clear session after confirmation
     clear_session(user_id)
 
 
+def notify_admins(order_id, user, cart, info, total):
+    lines = [
+        f"{qty}x {catalog[item]['emoji']} {item} — {SYMBOL}{(catalog[item]['price'] * qty):.2f}"
+        for item, qty in cart.items() if item in catalog
+    ]
+    stickers_block = "\n".join(lines)
+
+    text = (
+        f"📦 *New order received!* \n"
+        f"🆔 Order ID: *{order_id}*\n"
+        f"👤 Telegram: @{user.username or user.first_name}\n\n"
+        f"{stickers_block}\n\n"
+        f"💰 Total: *{SYMBOL}{total:.2f}*\n\n"
+        f"📍 Address:\n"
+        f"{info['name']}\n"
+        f"{info['house']} {info['street']}\n"
+        f"{info['city']} {info['postcode']}\n\n"
+        f"Status: _pending_"
+    )
+
+    for admin_id in ADMIN_IDS:
+        try:
+            bot.send_message(admin_id, text, parse_mode="Markdown")
+        except Exception:
+            pass
+
+    if NOTIFY_CHANNEL_ID:
+        try:
+            bot.send_message(NOTIFY_CHANNEL_ID, text, parse_mode="Markdown")
+        except Exception:
+            pass
+
+
 # ----------------------------------------------------------------------
-# Admin Commands
+# Admin Commands + Startup
 # ----------------------------------------------------------------------
+def is_admin(user_id):
+    return user_id in ADMIN_IDS
+
 
 @bot.message_handler(commands=["maintenance_on"])
 def maintenance_on(message):
@@ -913,18 +875,11 @@ def last_orders(message):
         recent = rows[-5:]
         text = "🧾 *Last 5 Orders:*\n\n"
         for row in reversed(recent):
-            text += (
-                f"• {row['order_id']} — {row['username']} — "
-                f"{row['status']} — {SYMBOL}{row['order_total']}\n"
-            )
+            text += f"• {row['order_id']} — {row['username']} — {row['status']} — {SYMBOL}{row['order_total']}\n"
         bot.reply_to(message, text, parse_mode="Markdown")
     except Exception as e:
         bot.reply_to(message, f"⚠️ Error reading orders: {e}")
 
-
-# ----------------------------------------------------------------------
-# Run bot (polling or webhook)
-# ----------------------------------------------------------------------
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
