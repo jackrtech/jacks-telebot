@@ -74,6 +74,23 @@ SUCCESS_URL = cfg.get("success_url", "https://example.com/success")
 CANCEL_URL = cfg.get("cancel_url", "https://example.com/cancel")
 
 stripe.api_key = STRIPE_SECRET_KEY or None
+
+# ----------------------------------------------------------------------
+# Load Outlook email credentials (sender, password, recipient)
+# ----------------------------------------------------------------------
+EMAIL_USER, EMAIL_PASS, EMAIL_TO = None, None, None
+try:
+    if os.path.exists("email.txt"):
+        with open("email.txt", "r", encoding="utf-8") as ef:
+            lines = [ln.strip() for ln in ef.read().splitlines() if ln.strip()]
+        if len(lines) >= 2:
+            EMAIL_USER = lines[0]
+            EMAIL_PASS = lines[1]
+            EMAIL_TO = lines[2] if len(lines) >= 3 else lines[0]
+except Exception as e:
+    print(f"⚠️ Email credentials not loaded: {e}")
+
+
 # Catalog configuration
 raw_catalog = cfg.get("catalog", {})
 catalog = {}
@@ -1037,3 +1054,4 @@ def stripe_webhook():
 """
 
 #new comment
+
