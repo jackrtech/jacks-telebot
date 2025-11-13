@@ -375,9 +375,8 @@ def validate_field(field, text):
         return len(t) >= 3 and any(c.isalpha() for c in t)
     if field == "city":
         return len(t) >= 2 and any(c.isalpha() for c in t)
-    if field == "postcode":
-        # UK-style; adjust if needed
-        return bool(re.match(r"^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$", t.upper()))
+    elif field == "postcode":
+        return len(t.strip()) >= 3
     return True
 
 
