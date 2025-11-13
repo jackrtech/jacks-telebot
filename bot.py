@@ -102,6 +102,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("stickerbot")
 
+import telebot.apihelper
+telebot.apihelper.ENABLE_MIDDLEWARE = True
+
+
 bot = telebot.TeleBot(TOKEN, parse_mode="Markdown", skip_pending=True)
 
 # Sessions & cart
