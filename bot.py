@@ -167,6 +167,38 @@ def generate_order_id():
 # Helper functions: sessions, maintenance, menus, validation
 # ----------------------------------------------------------------------
 
+# =====================================================
+#  DELIVERY MESSAGE EDITOR  (add near the top of bot.py)
+# =====================================================
+def edit_or_send(bot, chat_id, text, reply_markup=None, user_states=None):
+    """
+    Try editing the existing message instead of sending a new one.
+    If editing fails (e.g. old message deleted), send a new message and store its id.
+    """
+    msg_id = None
+    if user_states and chat_id in user_states:
+        msg_id = user_states[chat_id].get("msg_id")
+
+    try:
+        if msg_id:
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=msg_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode="Markdown",
+            )
+            return msg_id
+        else:
+            sent = bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode="Markdown")
+            user_states[chat_id]["msg_id"] = sent.message_id
+            return sent.message_id
+    except Exception:
+        sent = bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode="Markdown")
+        user_states[chat_id]["msg_id"] = sent.message_id
+        return sent.message_id
+
+
 def is_down(chat_id):
     """If maintenance mode is enabled, inform the user and block the action."""
     if MAINTENANCE:
@@ -327,19 +359,16 @@ def prompt_next_field(chat_id, field, step):
     else:
         kb.add(InlineKeyboardButton("↩️ /back", callback_data="back"))
 
-    bot.send_message(
-        chat_id,
-        delivery_prompts[field],
-        parse_mode="Markdown",
-        reply_markup=kb,
-    )
+    edit_or_send(bot, chat_id, delivery_prompts[field],
+             reply_markup=kb, user_states=user_states)
+
 
 
 def validate_field(field, text):
     """Basic validation rules for checkout fields."""
     t = text.strip()
     if field == "name":
-        return bool(re.match(r"^[A-Za-z\s]{3,}$", t)) and " " in t
+    return len(t.strip()) >= 2
     if field == "house":
         return bool(re.match(r"^[A-Za-z0-9\s\-]{1,10}$", t))
     if field == "street":
@@ -400,6 +429,8 @@ def send_order_review(chat_id, user_id):
         InlineKeyboardButton("✏️ Edit Address", callback_data="edit_address"),
         InlineKeyboardButton("↩️ /back", callback_data="back"),
     )
+
+    user_states[user_id].pop("msg_id", None)
 
     bot.send_message(chat_id, summary, parse_mode="Markdown", reply_markup=kb)
 
@@ -678,24 +709,34 @@ def go_back(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
 
-    if check_and_handle_expiry(user_id, chat_id, is_callback=True, callback_id=callback.id):
-        return
-
-    if user_id not in user_states:
-        bot.answer_callback_query(callback.id, "No active checkout.")
+    # Ensure user state exists
+    if user_id not in user_states or "step" not in user_states[user_id]:
+        bot.answer_callback_query(callback.id, "No previous step to go back to.")
         return
 
     step = user_states[user_id]["step"]
-
-    if step > 0:
-        user_states[user_id]["step"] -= 1
-        prev_field = delivery_steps[user_states[user_id]["step"]]
-        bot.answer_callback_query(callback.id)
-        bot.send_message(chat_id, "↩️ Going back.", parse_mode="Markdown")
-        prompt_next_field(chat_id, prev_field, user_states[user_id]["step"])
-        update_activity(user_id)
-    else:
+    if step == 0:
         bot.answer_callback_query(callback.id, "You're already at the first step.")
+        return
+
+    # Move one step back
+    user_states[user_id]["step"] = step - 1
+    prev_field = delivery_fields[user_states[user_id]["step"]]
+
+    # Build back button again
+    back_markup = InlineKeyboardMarkup()
+    back_markup.add(InlineKeyboardButton("↩️ Back", callback_data="back"))
+
+    # Edit the existing delivery message instead of sending a new one
+    edit_or_send(
+        bot,
+        chat_id,
+        delivery_prompts[prev_field],
+        reply_markup=back_markup,
+        user_states=user_states
+    )
+
+    bot.answer_callback_query(callback.id)
 
 
 @bot.callback_query_handler(func=lambda c: c.data == "edit_address")
