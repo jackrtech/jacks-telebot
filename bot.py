@@ -1004,6 +1004,49 @@ def last_orders(message):
     except Exception as e:
         bot.reply_to(message, f"⚠️ Error reading orders: {e}")
 
+# ----------------------------------------------------------------------
+# Test Outlook email sending (manual trigger)
+# ----------------------------------------------------------------------
+import smtplib
+from email.mime.text import MIMEText
+
+def test_email():
+    """Send a test email using Outlook credentials."""
+    if not (EMAIL_USER and EMAIL_PASS):
+        print("⚠️ Email credentials missing.")
+        return
+
+    msg = MIMEText("Hello! This is a test email from your Telegram bot.")
+    msg["Subject"] = "Test email from Sticker Shop Bot"
+    msg["From"] = EMAIL_USER
+    msg["To"] = EMAIL_TO or EMAIL_USER
+
+    try:
+        with smtplib.SMTP("smtp.office365.com", 587) as s:
+            s.starttls()
+            s.login(EMAIL_USER, EMAIL_PASS)
+            s.send_message(msg)
+        print("✅ Test email sent successfully!")
+    except Exception as e:
+        print(f"⚠️ Email send error: {e}")
+
+
+# ----------------------------------------------------------------------
+# Start bot (webhook or polling mode)
+# ----------------------------------------------------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+if __name__ == "__main__":
+    if WEBHOOK_URL:
+        logger.info("🚀 Starting bot in WEBHOOK mode")
+        bot.remove_webhook()
+        bot.set_webhook(url=WEBHOOK_URL)
+    else:
+        logger.info("💡 Starting bot in POLLING mode")
+        print("✅ Sticker Shop Bot running with Stripe Checkout & delivery rules...")
+        bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
+
 
 # ----------------------------------------------------------------------
 # Run bot (polling or webhook)
