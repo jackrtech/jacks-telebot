@@ -368,7 +368,7 @@ def validate_field(field, text):
     """Basic validation rules for checkout fields."""
     t = text.strip()
     if field == "name":
-    return len(t.strip()) >= 2
+        return len(t.strip()) >= 2
     if field == "house":
         return bool(re.match(r"^[A-Za-z0-9\s\-]{1,10}$", t))
     if field == "street":
