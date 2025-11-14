@@ -1052,6 +1052,45 @@ if __name__ == "__main__":
 # Run bot (polling or webhook)
 # ----------------------------------------------------------------------
 
+# ================================
+#  MAILGUN EMAIL SENDER (STAGING)
+# ================================
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_mailgun_email(subject, body, recipient=None):
+    try:
+        # Load Mailgun credentials
+        with open("mailgun.txt", "r") as f:
+            lines = [line.strip() for line in f.readlines()]
+            username = lines[0]
+            password = lines[1]
+            default_recipient = lines[2]
+
+        # Build the email
+        sender_email = username
+        recipient_email = recipient or default_recipient
+
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = recipient_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        # Connect to Mailgun SMTP
+        with smtplib.SMTP("smtp.mailgun.org", 587) as server:
+            server.starttls()
+            server.login(username, password)
+            server.send_message(msg)
+
+        print("✅ Mailgun email sent successfully!")
+
+    except Exception as e:
+        print(f"⚠️ Mailgun email send error: {e}")
+
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
