@@ -1108,13 +1108,10 @@ if __name__ == "__main__":
 # ----------------------------------------------------------------------
 # Stripe Webhook Stub (for Phase 2 receipts after payment)
 # ----------------------------------------------------------------------
-"""
-# Example Flask webhook for Stripe payment confirmation
-# Uncomment and expand when ready to send Telegram receipts after payment
 
 from flask import Flask, request
-
 app = Flask(__name__)
+
 
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
@@ -1130,10 +1127,31 @@ def stripe_webhook():
         session = event["data"]["object"]
         order_id = session.get("metadata", {}).get("order_id")
         username = session.get("metadata", {}).get("telegram_user")
-        # TODO: mark order as paid in CSV
-        # bot.send_message(chat_id_of_user, f"🧾 Payment confirmed! Your order {order_id} is now complete.")
-    return "", 200
+
+        # --- NEW EMAIL ALERT ---
+        email_subject = f"New Sticker Shop Order {order_id} — Payment Confirmed"
+        email_body = f"""
+🧾 New Sticker Shop Order
+
+Order ID: {order_id}
+Payment: ✅ Successful (Stripe)
+
+👤 Customer:
+Telegram: @{username}
+
+Amount: £{session.get('amount_total', 0) / 100:.2f}
+
+📦 This order has been paid successfully via Stripe.
+Check your admin dashboard or orders.csv for full details.
 """
+
+        try:
+            send_mailgun_email(email_subject, email_body)
+            print(f"✅ Sent internal order email for {order_id}")
+        except Exception as e:
+            print(f"⚠️ Failed to send order email: {e}")
+
+    return "", 200
 
 #new comment
 
