@@ -382,19 +382,30 @@ def prompt_next_field(chat_id, field, step):
 
 
 def validate_field(field, text):
-    """Basic validation rules for checkout fields."""
+    """Simplified validation rules for checkout fields."""
     t = text.strip()
+
     if field == "name":
-        return len(t.strip()) >= 2
-    if field == "house":
-        return bool(re.match(r"^[A-Za-z0-9\s\-]{1,10}$", t))
-    if field == "street":
+        # Allow short or single-word names like "Jack"
+        return len(t) >= 1
+
+    elif field == "house":
+        # Keep mild rule for house numbers/names (letters, numbers, dash)
+        return bool(re.match(r"^[A-Za-z0-9\s\-]{1,15}$", t))
+
+    elif field == "street":
+        # Must include at least 3 chars, with at least one letter
         return len(t) >= 3 and any(c.isalpha() for c in t)
-    if field == "city":
+
+    elif field == "city":
         return len(t) >= 2 and any(c.isalpha() for c in t)
+
     elif field == "postcode":
-        return len(t.strip()) >= 3
+        # Fully relaxed: accept anything 2+ chars
+        return len(t) >= 2
+
     return True
+
 
 
 def send_order_review(chat_id, user_id):
