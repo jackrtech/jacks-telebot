@@ -1127,17 +1127,31 @@ app = Flask(__name__)
 
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
+
+    print("🔔 Stripe webhook triggered")
+    print("Headers:", dict(request.headers))
+    print("Raw payload:", request.data.decode("utf-8"))
+
     payload = request.data
     sig_header = request.headers.get("Stripe-Signature")
     endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
 
+    # Verify signature
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except Exception as e:
+        print("❌ Webhook signature error:", e)
         return f"Webhook error: {e}", 400
+
+    print("🔎 Event type:", event["type"])
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
+
+        # Debug prints AFTER session is defined
+        print("✅ Stripe says checkout.session.completed event received")
+        print("Session object:", session)
+        print("Metadata:", session.get("metadata"))
 
         # Extract metadata
         order_id = session.get("metadata", {}).get("order_id")
@@ -1147,6 +1161,8 @@ def stripe_webhook():
         # Convert user ID to int (Stripe sends metadata as strings)
         if telegram_user_id:
             telegram_user_id = int(telegram_user_id)
+
+            print(f"Attempting to send Telegram receipt to {telegram_user_id}")
 
             # --- SEND TELEGRAM PAYMENT RECEIPT ---
             try:
@@ -1184,7 +1200,9 @@ Check your admin dashboard or orders.csv for full details.
         except Exception as e:
             print(f"⚠️ Failed to send order email: {e}")
 
+    print("Webhook handler finished, returning 200 OK")
     return "", 200
+
 
 
 #new comment
