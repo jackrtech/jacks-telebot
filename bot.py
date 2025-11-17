@@ -927,6 +927,7 @@ def confirm_order(callback):
                 metadata={
                     "order_id": order_id,
                     "telegram_user": callback.from_user.username or "",
+                    "telegram_user_id": callback.from_user.id,
                 },
             )
 
@@ -1129,6 +1130,7 @@ def stripe_webhook():
     payload = request.data
     sig_header = request.headers.get("Stripe-Signature")
     endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except Exception as e:
@@ -1136,10 +1138,30 @@ def stripe_webhook():
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
+
+        # Extract metadata
         order_id = session.get("metadata", {}).get("order_id")
         username = session.get("metadata", {}).get("telegram_user")
+        telegram_user_id = session.get("metadata", {}).get("telegram_user_id")
 
-        # --- NEW EMAIL ALERT ---
+        # Convert user ID to int (Stripe sends metadata as strings)
+        if telegram_user_id:
+            telegram_user_id = int(telegram_user_id)
+
+            # --- SEND TELEGRAM PAYMENT RECEIPT ---
+            try:
+                bot.send_message(
+                    telegram_user_id,
+                    f"🎉 *Payment Received!*\n\n"
+                    f"Your order *{order_id}* has been successfully paid.\n"
+                    f"Thank you for your purchase! 🙏",
+                    parse_mode="Markdown"
+                )
+                print(f"📨 Sent Telegram receipt to user {telegram_user_id}")
+            except Exception as e:
+                print(f"⚠️ Failed to send Telegram receipt: {e}")
+
+        # --- EXISTING EMAIL ALERT ---
         email_subject = f"New Sticker Shop Order {order_id} — Payment Confirmed"
         email_body = f"""
 🧾 New Sticker Shop Order
@@ -1163,6 +1185,7 @@ Check your admin dashboard or orders.csv for full details.
             print(f"⚠️ Failed to send order email: {e}")
 
     return "", 200
+
 
 #new comment
 
