@@ -70,8 +70,8 @@ if not STRIPE_SECRET_KEY:
 if not STRIPE_SECRET_KEY:
     STRIPE_SECRET_KEY = cfg.get("stripe_secret_key", "").strip()
 
-SUCCESS_URL = cfg.get("success_url", "https://example.com/success")
-CANCEL_URL = cfg.get("cancel_url", "https://example.com/cancel")
+SUCCESS_URL = cfg.get("success_url", "https://postmenuk.org/success")
+CANCEL_URL = cfg.get("cancel_url", "https://postmenuk.org/cancel")
 
 stripe.api_key = STRIPE_SECRET_KEY or None
 
@@ -1197,6 +1197,32 @@ def telegram_webhook():
         bot.process_new_updates([telebot.types.Update.de_json(update)])
         return "OK", 200
     return "Invalid", 400
+
+@app.route("/success")
+def payment_success():
+    return """
+    <html>
+        <body style='font-family: Arial; text-align:center; padding-top:50px;'>
+            <h2>🎉 Payment Successful</h2>
+            <p>Your payment has been received.</p>
+            <p>You may now return to Telegram.</p>
+        </body>
+    </html>
+    """, 200
+
+
+@app.route("/cancel")
+def payment_cancel():
+    return """
+    <html>
+        <body style='font-family: Arial; text-align:center; padding-top:50px;'>
+            <h2>❌ Payment Cancelled</h2>
+            <p>Your payment was cancelled.</p>
+            <p>You can return to Telegram and try again.</p>
+        </body>
+    </html>
+    """, 200
+
 
 
 
