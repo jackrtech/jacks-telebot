@@ -409,6 +409,8 @@ def validate_field(field, text):
 
 
 def send_order_review(chat_id, user_id):
+    
+    user_states[user_id]["step"] = len(delivery_steps)  # Review screen index
     """Show final confirmation: items + address + delivery + total."""
     info = user_states[user_id]["data"]
     cart = user_carts.get(user_id, {})
@@ -454,8 +456,9 @@ def send_order_review(chat_id, user_id):
     kb.add(
         InlineKeyboardButton("✅ Confirm", callback_data="confirm_details"),
         InlineKeyboardButton("✏️ Edit Address", callback_data="edit_address"),
-        InlineKeyboardButton("↩️ /back", callback_data="back"),
+        InlineKeyboardButton("↩️ Back", callback_data="back"),
     )
+
 
     user_states[user_id].pop("msg_id", None)
 
@@ -736,25 +739,25 @@ def go_back(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
 
-    # Ensure user state exists
     if user_id not in user_states or "step" not in user_states[user_id]:
         bot.answer_callback_query(callback.id, "No previous step to go back to.")
         return
 
     step = user_states[user_id]["step"]
+
     if step == 0:
         bot.answer_callback_query(callback.id, "You're already at the first step.")
         return
 
     # Move one step back
     user_states[user_id]["step"] = step - 1
-    prev_field = delivery_fields[user_states[user_id]["step"]]
+    prev_field = delivery_steps[user_states[user_id]["step"]]
 
     # Build back button again
     back_markup = InlineKeyboardMarkup()
     back_markup.add(InlineKeyboardButton("↩️ Back", callback_data="back"))
 
-    # Edit the existing delivery message instead of sending a new one
+    # Show the previous prompt
     edit_or_send(
         bot,
         chat_id,
@@ -764,6 +767,7 @@ def go_back(callback):
     )
 
     bot.answer_callback_query(callback.id)
+
 
 
 @bot.callback_query_handler(func=lambda c: c.data == "edit_address")
@@ -1049,15 +1053,7 @@ def test_email():
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-if __name__ == "__main__":
-    if WEBHOOK_URL:
-        logger.info("🚀 Starting bot in WEBHOOK mode")
-        bot.remove_webhook()
-        bot.set_webhook(url=WEBHOOK_URL)
-    else:
-        logger.info("💡 Starting bot in POLLING mode")
-        print("✅ Sticker Shop Bot running with Stripe Checkout & delivery rules...")
-        bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
+
 
 
 # ----------------------------------------------------------------------
@@ -1103,31 +1099,20 @@ def send_mailgun_email(subject, body, recipient=None):
 
 
 
+# ----------------------------------------------------------------------
+# Logging
+# ----------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-if __name__ == "__main__":
-    if WEBHOOK_URL:
-        logger.info("🚀 Starting bot in WEBHOOK mode")
-        bot.remove_webhook()
-        bot.set_webhook(url=WEBHOOK_URL)
-    else:
-        logger.info("💡 Starting bot in POLLING mode")
-        print("✅ Sticker Shop Bot running with Stripe Checkout & delivery rules...")
-        bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
-
-
 # ----------------------------------------------------------------------
-# Stripe Webhook Stub (for Phase 2 receipts after payment)
+# Flask Web Server for Stripe Webhooks
 # ----------------------------------------------------------------------
-
 from flask import Flask, request
 app = Flask(__name__)
 
-
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
-
     print("🔔 Stripe webhook triggered")
     print("Headers:", dict(request.headers))
     print("Raw payload:", request.data.decode("utf-8"))
@@ -1136,50 +1121,44 @@ def stripe_webhook():
     sig_header = request.headers.get("Stripe-Signature")
     endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-    # Verify signature
+    # Validate signature
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except Exception as e:
         print("❌ Webhook signature error:", e)
         return f"Webhook error: {e}", 400
 
-    print("🔎 Event type:", event["type"])
+    print("🔎 Event type:", event.get("type"))
 
+    # Handle payment success
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
 
-        # Debug prints AFTER session is defined
-        print("✅ Stripe says checkout.session.completed event received")
-        print("Session object:", session)
+        print("✅ checkout.session.completed event received")
+        print("Session:", session)
         print("Metadata:", session.get("metadata"))
 
-        # Extract metadata
-        order_id = session.get("metadata", {}).get("order_id")
-        username = session.get("metadata", {}).get("telegram_user")
-        telegram_user_id = session.get("metadata", {}).get("telegram_user_id")
+        order_id = session["metadata"]["order_id"]
+        username = session["metadata"]["telegram_user"]
+        telegram_user_id = int(session["metadata"]["telegram_user_id"])
 
-        # Convert user ID to int (Stripe sends metadata as strings)
-        if telegram_user_id:
-            telegram_user_id = int(telegram_user_id)
+        # send Telegram receipt
+        try:
+            bot.send_message(
+                telegram_user_id,
+                f"🎉 *Payment Received!*\n\n"
+                f"Your order *{order_id}* has been successfully paid.\n"
+                f"Thank you for your purchase! 🙏",
+                parse_mode="Markdown"
+            )
+            print(f"📨 Sent Telegram receipt to user {telegram_user_id}")
+        except Exception as e:
+            print(f"⚠️ Telegram receipt failed: {e}")
 
-            print(f"Attempting to send Telegram receipt to {telegram_user_id}")
-
-            # --- SEND TELEGRAM PAYMENT RECEIPT ---
-            try:
-                bot.send_message(
-                    telegram_user_id,
-                    f"🎉 *Payment Received!*\n\n"
-                    f"Your order *{order_id}* has been successfully paid.\n"
-                    f"Thank you for your purchase! 🙏",
-                    parse_mode="Markdown"
-                )
-                print(f"📨 Sent Telegram receipt to user {telegram_user_id}")
-            except Exception as e:
-                print(f"⚠️ Failed to send Telegram receipt: {e}")
-
-        # --- EXISTING EMAIL ALERT ---
-        email_subject = f"New Sticker Shop Order {order_id} — Payment Confirmed"
-        email_body = f"""
+        # send internal email
+        try:
+            email_subject = f"New Sticker Shop Order {order_id} — Payment Confirmed"
+            email_body = f"""
 🧾 New Sticker Shop Order
 
 Order ID: {order_id}
@@ -1193,17 +1172,32 @@ Amount: £{session.get('amount_total', 0) / 100:.2f}
 📦 This order has been paid successfully via Stripe.
 Check your admin dashboard or orders.csv for full details.
 """
-
-        try:
             send_mailgun_email(email_subject, email_body)
-            print(f"✅ Sent internal order email for {order_id}")
+            print(f"📨 Internal order email sent for {order_id}")
         except Exception as e:
-            print(f"⚠️ Failed to send order email: {e}")
+            print(f"⚠️ Failed to send internal email: {e}")
 
-    print("Webhook handler finished, returning 200 OK")
+    print("Webhook handler finished")
     return "", 200
 
+# ----------------------------------------------------------------------
+# Run Telegram Bot + Flask Together
+# ----------------------------------------------------------------------
+from threading import Thread
 
+def run_telegram():
+    logger.info("💡 Starting Telegram bot (Polling mode)...")
+    bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
 
-#new comment
+def run_flask():
+    logger.info("🌐 Starting Flask webhook server on port 8000...")
+    app.run(host="0.0.0.0", port=8000)
 
+if __name__ == "__main__":
+    # Start Flask background thread
+    flask_thread = Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    # Start Telegram bot in main thread
+    run_telegram()
