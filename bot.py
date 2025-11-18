@@ -409,7 +409,7 @@ def validate_field(field, text):
 
 
 def send_order_review(chat_id, user_id):
-    
+
     user_states[user_id]["step"] = len(delivery_steps)  # Review screen index
     """Show final confirmation: items + address + delivery + total."""
     info = user_states[user_id]["data"]
@@ -1185,9 +1185,16 @@ Check your admin dashboard or orders.csv for full details.
 # ----------------------------------------------------------------------
 from threading import Thread
 
+@app.route("/")
+def home():
+    return "PostmenUK Bot is running!"
+
+
 def run_telegram():
     logger.info("💡 Starting Telegram bot (Polling mode)...")
     bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
+
+    
 
 def run_flask():
     logger.info("🌐 Starting Flask webhook server on port 8000...")
