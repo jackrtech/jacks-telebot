@@ -1190,6 +1190,16 @@ def home():
     return "PostmenUK Bot is running!"
 
 
+@app.route("/telegram_webhook", methods=["POST"])
+def telegram_webhook():
+    if request.headers.get("content-type") == "application/json":
+        update = request.get_json(force=True)
+        bot.process_new_updates([telebot.types.Update.de_json(update)])
+        return "OK", 200
+    return "Invalid", 400
+
+
+
 def run_telegram():
     logger.info("💡 Starting Telegram bot (Polling mode)...")
     bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
