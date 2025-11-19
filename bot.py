@@ -1160,6 +1160,7 @@ logger = logging.getLogger(__name__)
 from flask import Flask, request
 app = Flask(__name__)
 
+
 @app.route("/stripe-webhook", methods=["POST"])
 def stripe_webhook():
     print("🔔 Stripe webhook triggered")
@@ -1170,16 +1171,22 @@ def stripe_webhook():
     sig_header = request.headers.get("Stripe-Signature")
     endpoint_secret = STRIPE_WEBHOOK_SECRET
 
-    # Validate signature
+    # ------------------------------------------------------
+    # 1. VALIDATE SIGNATURE & BUILD EVENT
+    # ------------------------------------------------------
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, endpoint_secret
+        )
     except Exception as e:
         print("❌ Webhook signature error:", e)
         return f"Webhook error: {e}", 400
 
     print("🔎 Event type:", event.get("type"))
 
-    # Handle payment success
+    # ------------------------------------------------------
+    # 2. HANDLE SUCCESSFUL PAYMENT
+    # ------------------------------------------------------
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
 
@@ -1193,13 +1200,13 @@ def stripe_webhook():
         username = metadata.get("telegram_user")
         telegram_user_id = int(metadata.get("telegram_user_id"))
 
-        # NEW METADATA FIELDS
+        # Itemisation fields
+        import json
         items_json = metadata.get("items_json", "[]")
         delivery_address = metadata.get("delivery_address", "No address provided")
         subtotal = int(metadata.get("subtotal", 0))
         delivery_cost = int(metadata.get("delivery_cost", 0))
 
-        import json
         try:
             items = json.loads(items_json)
         except:
@@ -1207,14 +1214,13 @@ def stripe_webhook():
 
         total_paid = session.get("amount_total", 0)
 
-        # 🇬🇧 Convert timestamp to UK time
+        # UK timestamp
         from datetime import datetime
         import pytz
-
         uk = pytz.timezone("Europe/London")
         order_time_uk = datetime.now(uk).strftime("%d %b %Y, %H:%M")
 
-        # Build itemised section
+        # Build item lines
         item_lines = []
         for item in items:
             name = item.get("name")
@@ -1225,7 +1231,7 @@ def stripe_webhook():
 
         items_formatted = "\n".join(item_lines) if item_lines else "No item breakdown."
 
-        # ---- FINAL RECEIPT MESSAGE ----
+        # Final receipt
         receipt_message = (
             "🧾 *Payment Receipt*\n\n"
             f"*Order ID:* `{order_id}`\n"
@@ -1253,22 +1259,9 @@ def stripe_webhook():
         except Exception as e:
             print(f"⚠️ Telegram receipt failed: {e}")
 
-        # Internal notification email
-        try:
-            email_subject = f"New Sticker Shop Order {order_id} — Payment Confirmed"
-            email_body = f"""
-🧾 New Sticker Shop Order
-
-Order ID: {order_id}
-Payment: ✅ Successful (Stripe)
-"""
-            send_mailgun_email(email_subject, email_body)
-            print(f"📨 Internal order email sent for {order_id}")
-        except Exception as e:
-            print(f"⚠️ Failed to send internal email: {e}")
-
     print("Webhook handler finished")
     return "", 200
+
 
 
 # ----------------------------------------------------------------------
