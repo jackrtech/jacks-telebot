@@ -1183,6 +1183,9 @@ from email.mime.multipart import MIMEMultipart
 import smtplib
 from email.mime.text import MIMEText
 
+import smtplib
+from email.mime.text import MIMEText
+
 def send_internal_email(subject, text):
     """
     Sends order notification to admin using Mailgun SMTP.
@@ -1196,7 +1199,7 @@ def send_internal_email(subject, text):
     msg = MIMEText(text)
     msg["Subject"] = subject
     msg["From"] = MAILGUN_SMTP_LOGIN
-    msg["To"] = ADMIN_EMAIL  # from mailgun.txt
+    msg["To"] = ADMIN_EMAIL
 
     try:
         with smtplib.SMTP("smtp.mailgun.org", 587) as server:
@@ -1214,6 +1217,7 @@ def send_internal_email(subject, text):
     except Exception as e:
         print(f"❌ SMTP send failed: {e}")
         return False
+
 
 
 # ----------------------------------------------------------------------
