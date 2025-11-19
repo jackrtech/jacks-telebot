@@ -97,6 +97,9 @@ if not STRIPE_SECRET_KEY:
 # Apply Stripe secret key
 stripe.api_key = STRIPE_SECRET_KEY
 
+# Success / cancel URLs for Stripe Checkout
+SUCCESS_URL = cfg.get("success_url", "https://postmenuk.org/success")
+CANCEL_URL = cfg.get("cancel_url", "https://postmenuk.org/cancel")
 
 
 # ----------------------------------------------------------------------
