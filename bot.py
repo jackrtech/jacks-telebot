@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-
+import requests
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import stripe
@@ -69,6 +69,8 @@ STRIPE_SECRET_KEY = ""
 STRIPE_PUBLISHABLE_KEY = ""
 STRIPE_WEBHOOK_SECRET = ""
 
+
+
 if os.path.exists("stripe.txt"):
     try:
         with open("stripe.txt", "r", encoding="utf-8") as f:
@@ -96,6 +98,32 @@ if not STRIPE_SECRET_KEY:
 
 # Apply Stripe secret key
 stripe.api_key = STRIPE_SECRET_KEY
+
+# -----------------------------
+# Load Mailgun Credentials
+# -----------------------------
+MAILGUN_DOMAIN = ""
+MAILGUN_API_KEY = ""
+MAILGUN_SMTP_LOGIN = ""
+MAILGUN_SMTP_PASSWORD = ""
+
+def load_mailgun_config():
+    config = {}
+    if os.path.exists("mailgun.txt"):
+        with open("mailgun.txt", "r", encoding="utf-8") as f:
+            for line in f:
+                if "=" in line:
+                    k, v = line.strip().split("=", 1)
+                    config[k] = v
+    return config
+
+mailgun_config = load_mailgun_config()
+
+MAILGUN_DOMAIN = mailgun_config.get("MAILGUN_DOMAIN", "")
+MAILGUN_API_KEY = mailgun_config.get("MAILGUN_API_KEY", "")
+MAILGUN_SMTP_LOGIN = mailgun_config.get("MAILGUN_SMTP_LOGIN", "")
+MAILGUN_SMTP_PASSWORD = mailgun_config.get("MAILGUN_SMTP_PASSWORD", "")
+
 
 # Success / cancel URLs for Stripe Checkout
 SUCCESS_URL = cfg.get("success_url", "https://postmenuk.org/success")
@@ -128,6 +156,42 @@ for name, data in raw_catalog.items():
         "image": data.get("image", ""),
         "price": price,
     }
+
+
+def send_internal_email(subject, text):
+    """
+    Sends order notification email to your admin inbox.
+    Uses Mailgun REST API (recommended over SMTP).
+    """
+    if not MAILGUN_API_KEY or not MAILGUN_DOMAIN:
+        print("❌ Mailgun not configured — missing API key or domain.")
+        return False
+
+    url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
+
+    try:
+        response = requests.post(
+            url,
+            auth=("api", MAILGUN_API_KEY),
+            data={
+                "from": f"Sticker Shop <orders@{MAILGUN_DOMAIN}>",
+                "to": "postmenukorders@gmail.com",
+                "subject": subject,
+                "text": text
+            }
+        )
+
+        if response.status_code == 200:
+            print("📨 Mailgun: internal email sent successfully.")
+            return True
+        else:
+            print(f"⚠️ Mailgun error: {response.status_code} — {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Mailgun exception: {e}")
+        return False
+
 
 # ----------------------------------------------------------------------
 # In-memory data stores
@@ -1248,7 +1312,7 @@ def stripe_webhook():
             "🙏 *Thank you for your order!*"
         )
 
-        # Send Telegram receipt
+        # -------------- SEND TELEGRAM RECEIPT ----------------
         try:
             bot.send_message(
                 telegram_user_id,
@@ -1259,8 +1323,34 @@ def stripe_webhook():
         except Exception as e:
             print(f"⚠️ Telegram receipt failed: {e}")
 
+        # ------------------------------------------------------
+        # 3. SEND ADMIN EMAIL (Mailgun)
+        # ------------------------------------------------------
+        email_subject = f"New Order Received — {order_id}"
+
+        email_text = (
+            f"New order received!\n\n"
+            f"Order ID: {order_id}\n"
+            f"Date: {order_time_uk} (UK)\n"
+            f"Customer: @{username} (ID: {telegram_user_id})\n\n"
+            "Items:\n"
+            f"{items_formatted}\n\n"
+            f"Subtotal: £{subtotal/100:.2f}\n"
+            f"Delivery: £{delivery_cost/100:.2f}\n"
+            f"Total Paid: £{total_paid/100:.2f}\n\n"
+            "Delivery Address:\n"
+            f"{delivery_address}\n\n"
+        )
+
+        try:
+            send_internal_email(email_subject, email_text)
+            print("📧 Admin email sent via Mailgun.")
+        except Exception as e:
+            print(f"❌ Failed to send admin email: {e}")
+
     print("Webhook handler finished")
     return "", 200
+
 
 
 
