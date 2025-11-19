@@ -939,14 +939,13 @@ def confirm_order(callback):
 
             kb = InlineKeyboardMarkup()
             kb.add(InlineKeyboardButton("💳 Pay Now", url=pay_url))
-            kb.add(InlineKeyboardButton("🛍 Make Another Order", callback_data="continue_order"))
 
             bot.send_message(
                 chat_id,
                 f"✅ Order *{order_id}* saved.\n"
                 f"💰 Total: {SYMBOL}{total:.2f}\n"
                 "Tap below to complete your payment securely:",
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=kb,
             )
 
@@ -957,7 +956,7 @@ def confirm_order(callback):
                 "✅ Your order has been saved, but payment setup failed.\n"
                 "We'll contact you soon to arrange payment manually.\n"
                 f"Error: {e}",
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
     else:
         # No Stripe: old behaviour
