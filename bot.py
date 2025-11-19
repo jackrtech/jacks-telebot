@@ -895,16 +895,13 @@ def confirm_order(callback):
         clear_session(user_id)
         return
 
+    # ---- CALCULATE COSTS ----
     subtotal = sum(
         (catalog[item]["price"] * qty for item, qty in cart.items() if item in catalog),
         Decimal("0.00"),
     ).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-    if subtotal >= FREE_DELIVERY_THRESHOLD:
-        delivery = Decimal("0.00")
-    else:
-        delivery = DELIVERY_FEE
-
+    delivery = Decimal("0.00") if subtotal >= FREE_DELIVERY_THRESHOLD else DELIVERY_FEE
     total = (subtotal + delivery).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
     order_id = generate_order_id()
@@ -912,7 +909,7 @@ def confirm_order(callback):
         [f"{qty}x {item}" for item, qty in cart.items() if item in catalog]
     )
 
-    # Save order as pending in CSV
+    # ---- SAVE TO CSV ----
     with open(csv_filename, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -932,10 +929,30 @@ def confirm_order(callback):
 
     bot.answer_callback_query(callback.id, "✅ Order saved!")
 
-    # Notify admins about new order
+    # Notify admins
     notify_admins(order_id, callback.from_user, cart, info, subtotal, delivery, total)
 
-    # If Stripe configured → create Checkout Session
+    # ---- BUILD METADATA ----
+    # Item breakdown for Stripe webhook
+    items_list = [
+        {
+            "name": item,
+            "qty": qty,
+            "price": int(catalog[item]["price"] * 100)
+        }
+        for item, qty in cart.items()
+        if item in catalog
+    ]
+
+    # Delivery address multiline
+    delivery_address = (
+        f"{info['name']}\n"
+        f"{info['house']} {info['street']}\n"
+        f"{info['city']}\n"
+        f"{info['postcode']}"
+    )
+
+    # ---- STRIPE CHECKOUT ----
     if stripe.api_key:
         try:
             checkout_session = stripe.checkout.Session.create(
@@ -955,10 +972,16 @@ def confirm_order(callback):
                 ],
                 success_url=f"{SUCCESS_URL}?order_id={order_id}",
                 cancel_url=f"{CANCEL_URL}?order_id={order_id}",
+
+                # ---- FULL METADATA FOR RECEIPTS ----
                 metadata={
                     "order_id": order_id,
                     "telegram_user": callback.from_user.username or "",
-                    "telegram_user_id": callback.from_user.id,
+                    "telegram_user_id": str(user_id),
+                    "items_json": json.dumps(items_list),
+                    "subtotal": str(int(subtotal * 100)),
+                    "delivery_cost": str(int(delivery * 100)),
+                    "delivery_address": delivery_address,
                 },
             )
 
@@ -977,7 +1000,6 @@ def confirm_order(callback):
             )
 
         except Exception as e:
-            # Fallback to manual payment if Stripe fails
             bot.send_message(
                 chat_id,
                 "✅ Your order has been saved, but payment setup failed.\n"
@@ -986,7 +1008,7 @@ def confirm_order(callback):
                 parse_mode="HTML",
             )
     else:
-        # No Stripe: old behaviour
+        # No Stripe
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("🛍 Make Another Order", callback_data="continue_order"))
 
@@ -1001,6 +1023,7 @@ def confirm_order(callback):
 
     # Clear session after confirmation
     clear_session(user_id)
+
 
 
 # ----------------------------------------------------------------------
@@ -1147,7 +1170,6 @@ def stripe_webhook():
     sig_header = request.headers.get("Stripe-Signature")
     endpoint_secret = STRIPE_WEBHOOK_SECRET
 
-
     # Validate signature
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
@@ -1165,24 +1187,73 @@ def stripe_webhook():
         print("Session:", session)
         print("Metadata:", session.get("metadata"))
 
-        order_id = session["metadata"]["order_id"]
-        username = session["metadata"]["telegram_user"]
-        telegram_user_id = int(session["metadata"]["telegram_user_id"])
+        metadata = session.get("metadata", {})
 
-        # send Telegram receipt
+        order_id = metadata.get("order_id")
+        username = metadata.get("telegram_user")
+        telegram_user_id = int(metadata.get("telegram_user_id"))
+
+        # NEW METADATA FIELDS
+        items_json = metadata.get("items_json", "[]")
+        delivery_address = metadata.get("delivery_address", "No address provided")
+        subtotal = int(metadata.get("subtotal", 0))
+        delivery_cost = int(metadata.get("delivery_cost", 0))
+
+        import json
+        try:
+            items = json.loads(items_json)
+        except:
+            items = []
+
+        total_paid = session.get("amount_total", 0)
+
+        # 🇬🇧 Convert timestamp to UK time
+        from datetime import datetime
+        import pytz
+
+        uk = pytz.timezone("Europe/London")
+        order_time_uk = datetime.now(uk).strftime("%d %b %Y, %H:%M")
+
+        # Build itemised section
+        item_lines = []
+        for item in items:
+            name = item.get("name")
+            qty = int(item.get("qty"))
+            price_each = int(item.get("price", 0))
+            line_total = (price_each * qty) / 100
+            item_lines.append(f"{qty} × {name} — £{line_total:.2f}")
+
+        items_formatted = "\n".join(item_lines) if item_lines else "No item breakdown."
+
+        # ---- FINAL RECEIPT MESSAGE ----
+        receipt_message = (
+            "🧾 *Payment Receipt*\n\n"
+            f"*Order ID:* `{order_id}`\n"
+            f"*Date:* {order_time_uk} (UK)\n\n"
+            "👤 *Customer*\n"
+            f"@{username} (ID: `{telegram_user_id}`)\n\n"
+            "📦 *Items*\n"
+            f"{items_formatted}\n\n"
+            f"*Subtotal:* £{subtotal/100:.2f}\n"
+            f"*Delivery:* £{delivery_cost/100:.2f}\n"
+            f"*Total Paid:* £{total_paid/100:.2f}\n\n"
+            "📍 *Delivery Address*\n"
+            f"{delivery_address}\n\n"
+            "🙏 *Thank you for your order!*"
+        )
+
+        # Send Telegram receipt
         try:
             bot.send_message(
                 telegram_user_id,
-                f"🎉 *Payment Received!*\n\n"
-                f"Your order *{order_id}* has been successfully paid.\n"
-                f"Thank you for your purchase! 🙏",
+                receipt_message,
                 parse_mode="Markdown"
             )
             print(f"📨 Sent Telegram receipt to user {telegram_user_id}")
         except Exception as e:
             print(f"⚠️ Telegram receipt failed: {e}")
 
-        # send internal email
+        # Internal notification email
         try:
             email_subject = f"New Sticker Shop Order {order_id} — Payment Confirmed"
             email_body = f"""
@@ -1190,14 +1261,6 @@ def stripe_webhook():
 
 Order ID: {order_id}
 Payment: ✅ Successful (Stripe)
-
-👤 Customer:
-Telegram: @{username}
-
-Amount: £{session.get('amount_total', 0) / 100:.2f}
-
-📦 This order has been paid successfully via Stripe.
-Check your admin dashboard or orders.csv for full details.
 """
             send_mailgun_email(email_subject, email_body)
             print(f"📨 Internal order email sent for {order_id}")
@@ -1206,6 +1269,7 @@ Check your admin dashboard or orders.csv for full details.
 
     print("Webhook handler finished")
     return "", 200
+
 
 # ----------------------------------------------------------------------
 # Run Telegram Bot + Flask Together
