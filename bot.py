@@ -61,19 +61,43 @@ NOTIFY_CHANNEL_ID = cfg.get("notify_channel_id")
 
 # Stripe configuration
 # Prefer stripe.txt, then environment, then (optionally) config.json fallback
+
+# ------------------------------
+# Load Stripe keys safely
+# ------------------------------
 STRIPE_SECRET_KEY = ""
+STRIPE_PUBLISHABLE_KEY = ""
+STRIPE_WEBHOOK_SECRET = ""
+
 if os.path.exists("stripe.txt"):
-    with open("stripe.txt", "r", encoding="utf-8") as _f:
-        STRIPE_SECRET_KEY = _f.read().strip()
+    try:
+        with open("stripe.txt", "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f.readlines()]
+
+        # Expecting exactly 3 lines:
+        # Line 1 → secret key
+        # Line 2 → publishable key
+        # Line 3 → webhook secret
+        if len(lines) >= 1:
+            STRIPE_SECRET_KEY = lines[0]
+        if len(lines) >= 2:
+            STRIPE_PUBLISHABLE_KEY = lines[1]
+        if len(lines) >= 3:
+            STRIPE_WEBHOOK_SECRET = lines[2]
+
+    except Exception as e:
+        print("⚠️ Error reading stripe.txt:", e)
+
+# Fallbacks if environment variables or config provide keys
 if not STRIPE_SECRET_KEY:
     STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
 if not STRIPE_SECRET_KEY:
     STRIPE_SECRET_KEY = cfg.get("stripe_secret_key", "").strip()
 
-SUCCESS_URL = cfg.get("success_url", "https://postmenuk.org/success")
-CANCEL_URL = cfg.get("cancel_url", "https://postmenuk.org/cancel")
+# Apply Stripe secret key
+stripe.api_key = STRIPE_SECRET_KEY
 
-stripe.api_key = STRIPE_SECRET_KEY or None
+
 
 # ----------------------------------------------------------------------
 # Load Outlook email credentials (sender, password, recipient)
@@ -1118,7 +1142,8 @@ def stripe_webhook():
 
     payload = request.data
     sig_header = request.headers.get("Stripe-Signature")
-    endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+    endpoint_secret = STRIPE_WEBHOOK_SECRET
+
 
     # Validate signature
     try:
