@@ -1158,15 +1158,23 @@ def send_internal_email(subject, text):
     """
     Sends order notification email using Mailgun SMTP (FREE TIER).
     """
+    print("📨 DEBUG: send_internal_email() called")
+    print("📨 Subject:", subject)
+    print("📨 Text preview:", text[:60])
+
 
     try:
         import smtplib
         from email.mime.text import MIMEText
+        
 
         # Load SMTP credentials
         smtp_server = MAILGUN_SMTP_SERVER
         smtp_login = MAILGUN_SMTP_LOGIN
         smtp_password = MAILGUN_SMTP_PASSWORD
+
+        print("📨 DEBUG: Preparing SMTP with:", MAILGUN_SMTP_SERVER, MAILGUN_SMTP_LOGIN)
+
 
         sender = MAILGUN_FROM_EMAIL or smtp_login
         recipient = MAILGUN_TO_EMAIL
@@ -1180,6 +1188,8 @@ def send_internal_email(subject, text):
         msg["Subject"] = subject
         msg["From"] = sender
         msg["To"] = recipient
+
+        print("📨 DEBUG: Sending SMTP now...")
 
         # ⭐ Use the configured SMTP server (not hard-coded)
         with smtplib.SMTP(smtp_server, 587) as server:
