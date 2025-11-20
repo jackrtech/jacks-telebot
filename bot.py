@@ -1338,7 +1338,7 @@ def stripe_webhook():
         )
 
         try:
-            send_internal_email_smtp(email_subject, email_text)
+            send_internal_email(email_subject, email_text)
             print("📧 Admin email sent via Mailgun.")
         except Exception as e:
             print(f"❌ Failed to send admin email: {e}")
