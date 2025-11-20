@@ -127,7 +127,7 @@ MAILGUN_SMTP_PASSWORD = mailgun_config.get("MAILGUN_SMTP_PASSWORD", "")
 MAILGUN_FROM_EMAIL = mailgun_config.get("MAILGUN_FROM_EMAIL", "")
 MAILGUN_TO_EMAIL = mailgun_config.get("MAILGUN_TO_EMAIL", "")
 
-
+#comment
 
 # Success / cancel URLs for Stripe Checkout
 SUCCESS_URL = cfg.get("success_url", "https://postmenuk.org/success")
