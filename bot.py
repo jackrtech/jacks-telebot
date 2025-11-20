@@ -1154,35 +1154,42 @@ from email.mime.text import MIMEText
 
 def send_internal_email(subject, text):
     """
-    Sends order notification to admin using Mailgun SMTP.
-    Free plan friendly — no API key needed.
+    Sends order notification email using Mailgun SMTP (FREE TIER).
     """
 
-    if not MAILGUN_SMTP_LOGIN or not MAILGUN_SMTP_PASSWORD:
-        print("❌ Mailgun SMTP is not configured!")
-        return False
-
-    msg = MIMEText(text)
-    msg["Subject"] = subject
-    msg["From"] = MAILGUN_SMTP_LOGIN
-    msg["To"] = ADMIN_EMAIL
-
     try:
+        import smtplib
+        from email.mime.text import MIMEText
+
+        # Load SMTP credentials
+        smtp_server = MAILGUN_SMTP_SERVER
+        smtp_login = MAILGUN_SMTP_LOGIN
+        smtp_password = MAILGUN_SMTP_PASSWORD
+
+        sender = MAILGUN_FROM_EMAIL or smtp_login
+        recipient = MAILGUN_TO_EMAIL
+
+        if not smtp_server or not smtp_login or not smtp_password:
+            print("❌ SMTP not fully configured.")
+            return False
+
+        msg = MIMEText(text)
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = recipient
+
         with smtplib.SMTP("smtp.mailgun.org", 587) as server:
             server.starttls()
-            server.login(MAILGUN_SMTP_LOGIN, MAILGUN_SMTP_PASSWORD)
-            server.sendmail(
-                MAILGUN_SMTP_LOGIN,
-                [ADMIN_EMAIL],
-                msg.as_string()
-            )
+            server.login(smtp_login, smtp_password)
+            server.sendmail(sender, [recipient], msg.as_string())
 
-        print("📨 SMTP: internal admin email sent.")
+        print("📧 SMTP email sent successfully.")
         return True
 
     except Exception as e:
-        print(f"❌ SMTP send failed: {e}")
+        print(f"❌ SMTP email failed: {e}")
         return False
+
 
 
 
