@@ -158,40 +158,6 @@ for name, data in raw_catalog.items():
     }
 
 
-def send_internal_email(subject, text):
-    """
-    Sends order notification email to your admin inbox.
-    Uses Mailgun REST API (recommended over SMTP).
-    """
-    if not MAILGUN_API_KEY or not MAILGUN_DOMAIN:
-        print("❌ Mailgun not configured — missing API key or domain.")
-        return False
-
-    url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
-
-    try:
-        response = requests.post(
-            url,
-            auth=("api", MAILGUN_API_KEY),
-            data={
-                "from": f"Sticker Shop <orders@{MAILGUN_DOMAIN}>",
-                "to": "postmenukorders@gmail.com",
-                "subject": subject,
-                "text": text
-            }
-        )
-
-        if response.status_code == 200:
-            print("📨 Mailgun: internal email sent successfully.")
-            return True
-        else:
-            print(f"⚠️ Mailgun error: {response.status_code} — {response.text}")
-            return False
-
-    except Exception as e:
-        print(f"❌ Mailgun exception: {e}")
-        return False
-
 
 # ----------------------------------------------------------------------
 # In-memory data stores
