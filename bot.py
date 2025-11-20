@@ -120,9 +120,11 @@ def load_mailgun_config():
 mailgun_config = load_mailgun_config()
 
 MAILGUN_DOMAIN = mailgun_config.get("MAILGUN_DOMAIN", "")
+MAILGUN_SMTP_SERVER = mailgun_config.get("MAILGUN_SMTP_SERVER", "")
 MAILGUN_API_KEY = mailgun_config.get("MAILGUN_API_KEY", "")
 MAILGUN_SMTP_LOGIN = mailgun_config.get("MAILGUN_SMTP_LOGIN", "")
 MAILGUN_SMTP_PASSWORD = mailgun_config.get("MAILGUN_SMTP_PASSWORD", "")
+
 
 
 # Success / cancel URLs for Stripe Checkout
