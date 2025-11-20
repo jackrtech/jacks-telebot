@@ -1163,7 +1163,6 @@ def send_internal_email(subject, text):
         import smtplib
         from email.mime.text import MIMEText
 
-        # Load SMTP credentials
         smtp_server = MAILGUN_SMTP_SERVER
         smtp_login = MAILGUN_SMTP_LOGIN
         smtp_password = MAILGUN_SMTP_PASSWORD
@@ -1175,12 +1174,13 @@ def send_internal_email(subject, text):
             print("❌ SMTP not fully configured.")
             return False
 
-        msg = MIMEText(text)
+        # IMPORTANT FIX — UTF-8
+        msg = MIMEText(text, _charset="UTF-8")
         msg["Subject"] = subject
         msg["From"] = sender
         msg["To"] = recipient
 
-        with smtplib.SMTP("smtp.mailgun.org", 587) as server:
+        with smtplib.SMTP(smtp_server, 587) as server:
             server.starttls()
             server.login(smtp_login, smtp_password)
             server.sendmail(sender, [recipient], msg.as_string())
