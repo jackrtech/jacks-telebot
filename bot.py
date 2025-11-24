@@ -378,10 +378,10 @@ def build_cart_text(user_id):
     # Delivery logic
     if subtotal >= FREE_DELIVERY_THRESHOLD:
         delivery = Decimal("0.00")
-        delivery_line = f"🚚 *Free delivery!* (orders over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})"
+        delivery_line = f"◼️ *Free delivery!* (orders over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})"
     else:
         delivery = DELIVERY_FEE
-        delivery_line = f"🚚 Delivery fee: {SYMBOL}{DELIVERY_FEE:.2f}"
+        delivery_line = f"◼️ Delivery fee: {SYMBOL}{DELIVERY_FEE:.2f}"
 
     total = (subtotal + delivery).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
@@ -402,12 +402,12 @@ def refresh_cart_message(user_id, chat_id):
     kb = InlineKeyboardMarkup()
     if has_items:
         kb.add(
-            InlineKeyboardButton("✅ Checkout", callback_data="begin_checkout"),
-            InlineKeyboardButton("🛍 Continue Shopping", callback_data="continue_order"),
-            InlineKeyboardButton("🗑 Clear Cart", callback_data="clear_cart"),
+            InlineKeyboardButton("🏁 Checkout", callback_data="begin_checkout"),
+            InlineKeyboardButton("🔌 Continue Shopping", callback_data="continue_order"),
+            InlineKeyboardButton("🪓 Clear Cart", callback_data="clear_cart"),
         )
     else:
-        kb.add(InlineKeyboardButton("🛍 Continue Shopping", callback_data="continue_order"))
+        kb.add(InlineKeyboardButton("🔌 Continue Shopping", callback_data="continue_order"))
 
     existing = user_cart_message.get(user_id)
 
@@ -646,19 +646,19 @@ def order(message):
         user_menu_messages[user_id].append((chat_id, msg.message_id))
         return
 
-    text = "🛍 *Our Stickers:*\n\n"
+    text = "📠 *Our Stickers:*\n\n"
     for name, data in catalog.items():
-        text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
+        #text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
 
     text += (
-        f"\n🚚 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
+        f"\n🔌 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
         f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n"
         "Tap a button below to add to your cart 👇"
     )
 
     kb = InlineKeyboardMarkup(row_width=2)
     for name, data in catalog.items():
-        kb.add(InlineKeyboardButton(f"{data['emoji']} {name}", callback_data=f"add|{name}"))
+        kb.add(InlineKeyboardButton(f"{name} - {data['price']}", callback_data=f"add|{name}"))
 
     # Persistent Open Cart button (replaces Checkout in catalog view)
     kb.add(InlineKeyboardButton("🛒 Open Cart", callback_data="open_cart"))
