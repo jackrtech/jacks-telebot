@@ -1,10 +1,10 @@
 {
-  "shop_name": "Sticker Shop",
+  "shop_name": "The Postmen",
   "currency": "GBP",
   "symbol": "£",
 
-  "delivery_fee": 2.50,
-  "free_delivery_threshold": 10.00,
+  "delivery_fee": 1,
+  "free_delivery_threshold": 7.50,
 
   "admin_ids": [123456789],
   "notify_channel_id": null,
@@ -14,17 +14,26 @@
   "webhook_url": "https://yourdomain.com/stripe-webhook",
 
   "catalog": {
-    "Smiley Sticker": {
-      "emoji": "😊",
-      "price": 1.50
+    "10X MULTIPACK": {
+      "emoji": "",
+      "price": 5
     },
-    "Heart Sticker": {
-      "emoji": "❤️",
-      "price": 1.25
+    "20X MULTIPACK": {
+      "emoji": "",
+      "price": 7.50
     },
-    "Star Sticker": {
-      "emoji": "⭐",
-      "price": 1.75
+    "30X MULTIPACK": {
+      "emoji": "",
+      "price": 10
+    },
+    "40X MULTIPACK": {
+      "emoji": "",
+      "price": 12.50
+    },
+    "50X MULTIPACK": {
+      "emoji": "",
+      "price": 15.00
     }
+    
   }
 }

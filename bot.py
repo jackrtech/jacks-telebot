@@ -59,6 +59,7 @@ FREE_DELIVERY_THRESHOLD = Decimal(str(cfg.get("free_delivery_threshold", "10.00"
 ADMIN_IDS = cfg.get("admin_ids", [])
 NOTIFY_CHANNEL_ID = cfg.get("notify_channel_id")
 
+
 # Stripe configuration
 # Prefer stripe.txt, then environment, then (optionally) config.json fallback
 
@@ -503,7 +504,7 @@ def send_order_review(chat_id, user_id):
 
     summary = (
         "✅ *Confirm your order:*\n\n"
-        "🛍 *Stickers:*\n" + "\n".join(lines) +
+        "*Stickers:*\n" + "\n".join(lines) +
         f"\n\nSubtotal: {SYMBOL}{subtotal:.2f}\n"
         f"{delivery_line}\n"
         f"💰 *Total: {SYMBOL}{total:.2f}*\n\n"
@@ -590,11 +591,11 @@ def start(message):
 
     bot.send_message(
         chat_id,
-        f"👋 Welcome to *{SHOP_NAME}!*\n\n"
+        f"🏴 Welcome to *{SHOP_NAME}*\n\n"
         f"🚚 Delivery is {SYMBOL}{DELIVERY_FEE:.2f}, "
-        f"*free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f}!* 🎉\n\n"
+        f"*free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f}* \n\n"
         "Use /order to browse stickers or /cart to view your cart.\n"
-        "💡 Use /restart if anything feels stuck.",
+        "🚧 Use /restart if anything feels stuck.",
         parse_mode="Markdown",
     )
 
@@ -647,7 +648,7 @@ def order(message):
         return
 
     text = "📠 *Our Stickers:*\n\n"
-    for name, data in catalog.items():
+    #for name, data in catalog.items():
         #text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
 
     text += (
