@@ -187,11 +187,11 @@ user_cart_message = {}
 # Delivery flow configuration
 delivery_steps = ["name", "house", "street", "city", "postcode"]
 delivery_prompts = {
-    "name": "📝 (1/5) Please enter your *Full Name:*",
-    "house": "📝 (2/5) Enter your *House Number / Name:*",
-    "street": "📝 (3/5) Enter your *Street Name:*",
-    "city": "📝 (4/5) Enter your *City / Town:*",
-    "postcode": "📝 (5/5) Enter your *Postcode:*",
+    "name": "📝 (1/5) Enter name for delivery:*",
+    "house": "📝 (2/5) Enter *House Number / Name:*",
+    "street": "📝 (3/5) Enter *Street Name:*",
+    "city": "📝 (4/5) Enter *City / Town:*",
+    "postcode": "📝 (5/5) Enter *Postcode:*",
 }
 
 # ----------------------------------------------------------------------
@@ -504,10 +504,10 @@ def send_order_review(chat_id, user_id):
 
     summary = (
         "✅ *Confirm your order:*\n\n"
-        "*Stickers:*\n" + "\n".join(lines) +
-        f"\n\nSubtotal: {SYMBOL}{subtotal:.2f}\n"
-        f"{delivery_line}\n"
-        f"💰 *Total: {SYMBOL}{total:.2f}*\n\n"
+        "*Items:*\n" + "\n".join(lines) +
+        #f"\n\nSubtotal: {SYMBOL}{subtotal:.2f}\n"
+        #f"{delivery_line}\n"
+        f"💷 *Total: {SYMBOL}{total:.2f}*\n\n"
         "📍 *Delivery Address:*\n"
         f"{info['name']}\n"
         f"{info['house']} {info['street']}\n"
@@ -592,7 +592,7 @@ def start(message):
     bot.send_message(
         chat_id,
         f"🏴 Welcome to *{SHOP_NAME}*\n\n"
-        f"🚚 Delivery is First-Class & Free, "
+        #f"🚚 Delivery is First-Class & Free, "
         #f"*free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f}* \n\n"
         "Use /order to browse or /cart to view your cart.\n"
         "🚧 Use /restart at anytime.",
@@ -783,10 +783,10 @@ def begin_checkout(callback):
         chat_id,
         f"🧾 *Your Order Summary:*\n\n"
         f"{summary}\n\n"
-        f"Current subtotal: {SYMBOL}{subtotal:.2f}\n"
-        f"🚚 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
-        f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n\n"
-        "Now let's collect your delivery details.",
+        f"Total: {SYMBOL}{subtotal:.2f}\n"
+        #f"🚚 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
+        #f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n\n"
+        "Enter Delivery Details:",
         parse_mode="Markdown",
     )
 
@@ -1029,7 +1029,7 @@ def confirm_order(callback):
             bot.send_message(
                 chat_id,
                 f"✅ Order *{order_id}* saved.\n"
-                f"💰 Total: {SYMBOL}{total:.2f}\n"
+                f"💷 Total: {SYMBOL}{total:.2f}\n"
                 "Tap below to complete your payment securely:",
                 parse_mode="HTML",
                 reply_markup=kb,
@@ -1299,16 +1299,16 @@ def stripe_webhook():
             "🧾 *Payment Receipt*\n\n"
             f"*Order ID:* `{order_id}`\n"
             f"*Date:* {order_time_uk} (UK)\n\n"
-            "👤 *Customer*\n"
+            f"👤 *Customer* @{username} \n"
             f"@{username} (ID: `{telegram_user_id}`)\n\n"
             "📦 *Items*\n"
             f"{items_formatted}\n\n"
-            f"*Subtotal:* £{subtotal/100:.2f}\n"
-            f"*Delivery:* £{delivery_cost/100:.2f}\n"
+            #f"*Subtotal:* £{subtotal/100:.2f}\n"
+            #f"*Delivery:* £{delivery_cost/100:.2f}\n"
             f"*Total Paid:* £{total_paid/100:.2f}\n\n"
-            "📍 *Delivery Address*\n"
+            "*Delivery Address*\n"
             f"{delivery_address}\n\n"
-            "🙏 *Thank you for your order!*"
+            "*Welcome to the Postmen 📮*"
         )
 
         # -------------- SEND TELEGRAM RECEIPT ----------------
