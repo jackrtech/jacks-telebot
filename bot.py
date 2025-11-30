@@ -385,7 +385,7 @@ def build_cart_text(user_id):
 
 
 def refresh_cart_message(user_id, chat_id):
-    """Always delete previous cart and send a new one."""
+    """Edit the existing cart message if possible. Only create a new one if edit fails."""
     text, has_items = build_cart_text(user_id)
 
     kb = InlineKeyboardMarkup()
@@ -398,17 +398,27 @@ def refresh_cart_message(user_id, chat_id):
     else:
         kb.add(InlineKeyboardButton("🔌 Continue Shopping", callback_data="continue_order"))
 
-    # Always delete old cart first
-    old = user_cart_message.get(user_id)
-    if old:
-        try:
-            bot.delete_message(old[0], old[1])
-        except Exception:
-            pass
+    existing = user_cart_message.get(user_id)
 
-    # Send fresh cart
+    # Try EDIT first (only correct behaviour for adding items)
+    if existing:
+        e_chat_id, e_msg_id = existing
+        try:
+            bot.edit_message_text(
+                chat_id=e_chat_id,
+                message_id=e_msg_id,
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=kb,
+            )
+            return   # SUCCESS: edited, no new message created
+        except Exception:
+            pass  # If editing fails, we fall through and send a new one
+
+    # If no cart exists or edit failed → SEND NEW (for /cart, open_cart, checkout)
     msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
     user_cart_message[user_id] = (chat_id, msg.message_id)
+
 
 
 
