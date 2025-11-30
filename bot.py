@@ -388,9 +388,9 @@ def build_cart_text(user_id):
 
     text += (
         f"\nTotal items: {total_items}\n"
-        f"Subtotal: {SYMBOL}{subtotal:.2f}\n"
-        f"{delivery_line}\n"
-        f"💰 *Total: {SYMBOL}{total:.2f}*"
+        #f"Subtotal: {SYMBOL}{subtotal:.2f}\n"
+        #f"{delivery_line}\n"
+        f"💰 *Total: {SYMBOL}{subtotal:.2f}*"
     )
 
     return (text, True)
@@ -650,7 +650,7 @@ def order(message):
     text = "📠 *Our Stickers:*\n"
     #for name, data in catalog.items():
         #text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
-    text = "Delivery: Free First-Class Postage\n"
+    text = "✉️ Free First-Class Postage\n"
 
     text += (
        #f"\n🔌 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
