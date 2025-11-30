@@ -358,28 +358,29 @@ def mark_old_menus_outdated(user_id):
 
 
 def build_cart_text(user_id):
-    """Build the cart summary including delivery fee rules."""
+    """Build the cart summary showing EACH item on its own line."""
     cart = user_carts.get(user_id, {})
     if not cart:
         return ("🛒 Your cart is empty. Use /order to add stickers.", False)
 
     text = "🛒 *Your Cart:*\n\n"
-    total_items = 0
     subtotal = Decimal("0.00")
+    total_items = 0
 
     for item, qty in cart.items():
         if item not in catalog:
             continue
+
         price = catalog[item]["price"]
-        line_total = (price * qty).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        text += f"{qty}x {catalog[item]['emoji']} {item} — {SYMBOL}{line_total:.2f}\n"
-        total_items += qty
-        subtotal += line_total
+        for _ in range(qty):
+            text += f"1 × {item} — {SYMBOL}{price:.2f}\n"
+            subtotal += price
+            total_items += 1
 
     # Delivery logic
     if subtotal >= FREE_DELIVERY_THRESHOLD:
         delivery = Decimal("0.00")
-        delivery_line = f"◼️ *Free delivery!* (orders over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})"
+        delivery_line = f"◼️ *Free delivery!* (over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})"
     else:
         delivery = DELIVERY_FEE
         delivery_line = f"◼️ Delivery fee: {SYMBOL}{DELIVERY_FEE:.2f}"
@@ -388,12 +389,12 @@ def build_cart_text(user_id):
 
     text += (
         f"\nTotal items: {total_items}\n"
-        #f"Subtotal: {SYMBOL}{subtotal:.2f}\n"
-        #f"{delivery_line}\n"
-        f"💰 *Total: {SYMBOL}{subtotal:.2f}*"
+        f"{delivery_line}\n"
+        f"💰 *Total: {SYMBOL}{total:.2f}*"
     )
 
     return (text, True)
+
 
 
 def refresh_cart_message(user_id, chat_id):
@@ -630,8 +631,8 @@ def order(message):
     text = "📠 *Our Stickers:*\n"
     #for name, data in catalog.items():
         #text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
-    text = "Free First-Class Postage (UK only)\n"
-    text += "For overseas orders, contact us directly\n"
+    text = "Free First-Class Postage (UK)\n"
+    text += "For international orders, contact us directly\n"
 
     text += (
        #f"\n🔌 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
