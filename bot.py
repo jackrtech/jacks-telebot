@@ -358,7 +358,7 @@ def mark_old_menus_outdated(user_id):
 
 
 def build_cart_text(user_id):
-    """Build the cart summary showing EACH item on its own line."""
+    """Build the cart summary showing EACH item on its own line (delivery always free)."""
     cart = user_carts.get(user_id, {})
     if not cart:
         return ("🛒 Your cart is empty. Use /order to add stickers.", False)
@@ -377,20 +377,11 @@ def build_cart_text(user_id):
             subtotal += price
             total_items += 1
 
-    # Delivery logic
-    #if subtotal >= FREE_DELIVERY_THRESHOLD:
-        #delivery = Decimal("0.00")
-        #delivery_line = f"◼️ *Free delivery!* (over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})"
-    #else:
-        #delivery = DELIVERY_FEE
-        #delivery_line = f"◼️ Delivery fee: {SYMBOL}{DELIVERY_FEE:.2f}"
-
-    total = (subtotal).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    total = subtotal.quantize(Decimal("0.01"), ROUND_HALF_UP)
 
     text += (
-        f"\nTotal items: {total_items}\n"
-        #f"{delivery_line}\n"
-        f"*Total: {SYMBOL}{total:.2f}*"
+        f"\n*Total items:* {total_items}\n"
+        f"*Total:* {SYMBOL}{total:.2f}"
     )
 
     return (text, True)
