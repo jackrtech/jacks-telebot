@@ -630,7 +630,8 @@ def order(message):
     text = "📠 *Our Stickers:*\n"
     #for name, data in catalog.items():
         #text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
-    text = "✉️ Free First-Class Postage\n"
+    text = "Free First-Class Postage (UK only)\n"
+    text = "For overseas orders, contact us directly\n"
 
     text += (
        #f"\n🔌 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
