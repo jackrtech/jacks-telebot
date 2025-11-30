@@ -652,7 +652,7 @@ def order(message):
         #text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
     text = "Delivery: Free First-Class Postage\n"
 
-    #text += (
+    text += (
        #f"\n🔌 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
         #f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n"
         "Tap a button below to add to your cart 👇"
