@@ -338,23 +338,19 @@ def check_and_handle_expiry(user_id, chat_id, is_callback=False, callback_id=Non
 
 
 def mark_old_menus_outdated(user_id):
-    """Edit previous /order messages for this user and mark them outdated."""
+    """Delete previous /order messages instead of marking them outdated."""
     entries = user_menu_messages.get(user_id, [])
     if not entries:
         return
 
     for chat_id, msg_id in entries:
         try:
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=msg_id,
-                text="❌ This menu is outdated. Please use /order to see the latest stickers.",
-                parse_mode="Markdown",
-            )
+            bot.delete_message(chat_id, msg_id)
         except Exception:
             pass
 
     user_menu_messages[user_id] = []
+
 
 
 def build_cart_text(user_id):
@@ -389,7 +385,7 @@ def build_cart_text(user_id):
 
 
 def refresh_cart_message(user_id, chat_id):
-    """Create or update the single cart message with inline controls."""
+    """Always delete previous cart and send a new one."""
     text, has_items = build_cart_text(user_id)
 
     kb = InlineKeyboardMarkup()
@@ -402,24 +398,18 @@ def refresh_cart_message(user_id, chat_id):
     else:
         kb.add(InlineKeyboardButton("🔌 Continue Shopping", callback_data="continue_order"))
 
-    existing = user_cart_message.get(user_id)
-
-    if existing:
-        e_chat_id, e_msg_id = existing
+    # Always delete old cart first
+    old = user_cart_message.get(user_id)
+    if old:
         try:
-            bot.edit_message_text(
-                chat_id=e_chat_id,
-                message_id=e_msg_id,
-                text=text,
-                parse_mode="Markdown",
-                reply_markup=kb,
-            )
-            return
+            bot.delete_message(old[0], old[1])
         except Exception:
-            pass  # fall through and send new
+            pass
 
+    # Send fresh cart
     msg = bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
     user_cart_message[user_id] = (chat_id, msg.message_id)
+
 
 
 def prompt_next_field(chat_id, field, step):
