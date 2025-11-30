@@ -187,7 +187,7 @@ user_cart_message = {}
 # Delivery flow configuration
 delivery_steps = ["name", "house", "street", "city", "postcode"]
 delivery_prompts = {
-    "name": "📝 (1/5) Enter name for delivery:*",
+    "name": "📝 (1/5) Enter *name* for delivery:",
     "house": "📝 (2/5) Enter *House Number / Name:*",
     "street": "📝 (3/5) Enter *Street Name:*",
     "city": "📝 (4/5) Enter *City / Town:*",
