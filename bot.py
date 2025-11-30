@@ -443,37 +443,11 @@ def prompt_next_field(chat_id, field, step):
 
 
 
-def validate_field(field, text):
-    """Simplified validation rules for checkout fields."""
-    t = text.strip()
-
-    if field == "name":
-        # Allow short or single-word names like "Jack"
-        return len(t) >= 1
-
-    elif field == "house":
-        # Keep mild rule for house numbers/names (letters, numbers, dash)
-        return bool(re.match(r"^[A-Za-z0-9\s\-]{1,15}$", t))
-
-    elif field == "street":
-        # Must include at least 3 chars, with at least one letter
-        return len(t) >= 3 and any(c.isalpha() for c in t)
-
-    elif field == "city":
-        return len(t) >= 2 and any(c.isalpha() for c in t)
-
-    elif field == "postcode":
-        # Fully relaxed: accept anything 2+ chars
-        return len(t) >= 2
-
-    return True
-
-
-
 def send_order_review(chat_id, user_id):
 
-    user_states[user_id]["step"] = len(delivery_steps)  # Review screen index
-    """Show final confirmation: items + address + delivery + total."""
+    # Move user to the review screen
+    user_states[user_id]["step"] = len(delivery_steps)
+
     info = user_states[user_id]["data"]
     cart = user_carts.get(user_id, {})
 
@@ -482,38 +456,43 @@ def send_order_review(chat_id, user_id):
         clear_session(user_id)
         return
 
+    # Build items list
     lines = []
     subtotal = Decimal("0.00")
 
     for item, qty in cart.items():
         if item not in catalog:
             continue
+
         price = catalog[item]["price"]
         line_total = (price * qty).quantize(Decimal("0.01"), ROUND_HALF_UP)
         subtotal += line_total
-        lines.append(f"{qty}x {catalog[item]['emoji']} {item} — {SYMBOL}{line_total:.2f}")
 
+        # Clean simple format: 3 x Multipack — £5.00
+        lines.append(f"{qty} × {item} — {SYMBOL}{line_total:.2f}")
+
+    # Delivery logic
     if subtotal >= FREE_DELIVERY_THRESHOLD:
         delivery = Decimal("0.00")
-        delivery_line = "🚚 *Free delivery applied!* 🎉"
     else:
         delivery = DELIVERY_FEE
-        delivery_line = f"🚚 Delivery: {SYMBOL}{DELIVERY_FEE:.2f}"
 
     total = (subtotal + delivery).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
+    # Build the message
     summary = (
-        "✅ *Confirm your order:*\n\n"
-        "*Items:*\n" + "\n".join(lines) +
-        #f"\n\nSubtotal: {SYMBOL}{subtotal:.2f}\n"
-        #f"{delivery_line}\n"
-        f"💷 *Total: {SYMBOL}{total:.2f}*\n\n"
-        "📍 *Delivery Address:*\n"
+        "🧾 *Confirm your order:*\n\n"
+        "*Items:*\n"
+        + "\n".join(lines)
+        + "\n\n"
+        f"*Total:* {SYMBOL}{total:.2f}\n\n"
+        "*Delivery address:*\n"
         f"{info['name']}\n"
         f"{info['house']} {info['street']}\n"
         f"{info['city']} {info['postcode']}"
     )
 
+    # Buttons
     kb = InlineKeyboardMarkup()
     kb.add(
         InlineKeyboardButton("✅ Confirm", callback_data="confirm_details"),
@@ -521,10 +500,11 @@ def send_order_review(chat_id, user_id):
         InlineKeyboardButton("↩️ Back", callback_data="back"),
     )
 
-
+    # Reset stored msg_id so prompt_next_field can safely write new messages
     user_states[user_id].pop("msg_id", None)
 
     bot.send_message(chat_id, summary, parse_mode="Markdown", reply_markup=kb)
+
 
 
 def notify_admins(order_id, user, cart, info, subtotal, delivery, total):
