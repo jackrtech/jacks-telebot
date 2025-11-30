@@ -538,10 +538,10 @@ def notify_admins(order_id, user, cart, info, subtotal, delivery, total):
         lines.append(f"{qty}x {catalog[item]['emoji']} {item} — {SYMBOL}{line_total:.2f}")
     stickers_block = "\n".join(lines)
 
-    if delivery == 0:
-        delivery_text = "🚚 Free delivery"
-    else:
-        delivery_text = f"🚚 Delivery: {SYMBOL}{delivery:.2f}"
+    if delivery:
+        delivery_text = "✉️ Free Postage"
+    #else:
+     #   delivery_text = f"🚚 Delivery: {SYMBOL}{delivery:.2f}"
 
     text = (
         f"📦 *New order received!*\n"
@@ -592,10 +592,10 @@ def start(message):
     bot.send_message(
         chat_id,
         f"🏴 Welcome to *{SHOP_NAME}*\n\n"
-        f"🚚 Delivery is {SYMBOL}{DELIVERY_FEE:.2f}, "
-        f"*free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f}* \n\n"
-        "Use /order to browse stickers or /cart to view your cart.\n"
-        "🚧 Use /restart if anything feels stuck.",
+        f"🚚 Delivery is First-Class & Free, "
+        #f"*free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f}* \n\n"
+        "Use /order to browse or /cart to view your cart.\n"
+        "🚧 Use /restart at anytime.",
         parse_mode="Markdown",
     )
 
@@ -647,19 +647,20 @@ def order(message):
         user_menu_messages[user_id].append((chat_id, msg.message_id))
         return
 
-    text = "📠 *Our Stickers:*\n\n"
+    text = "📠 *Our Stickers:*\n"
     #for name, data in catalog.items():
         #text += f"{data['emoji']} {name} — {SYMBOL}{data['price']:.2f}\n"
+    text = "Delivery: Free First-Class Postage\n"
 
-    text += (
-        f"\n🔌 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
-        f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n"
+    #text += (
+       #f"\n🔌 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
+        #f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n"
         "Tap a button below to add to your cart 👇"
     )
 
     kb = InlineKeyboardMarkup(row_width=2)
     for name, data in catalog.items():
-        kb.add(InlineKeyboardButton(f"{name} - {data['price']}", callback_data=f"add|{name}"))
+        kb.add(InlineKeyboardButton(f"{name} - £{data['price']}", callback_data=f"add|{name}"))
 
     # Persistent Open Cart button (replaces Checkout in catalog view)
     kb.add(InlineKeyboardButton("🛒 Open Cart", callback_data="open_cart"))
