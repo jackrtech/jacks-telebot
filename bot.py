@@ -373,24 +373,24 @@ def build_cart_text(user_id):
 
         price = catalog[item]["price"]
         for _ in range(qty):
-            text += f"1 × {item} — {SYMBOL}{price:.2f}\n"
+            text += f"{item} — {SYMBOL}{price:.2f}\n"
             subtotal += price
             total_items += 1
 
     # Delivery logic
-    if subtotal >= FREE_DELIVERY_THRESHOLD:
-        delivery = Decimal("0.00")
-        delivery_line = f"◼️ *Free delivery!* (over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})"
-    else:
-        delivery = DELIVERY_FEE
-        delivery_line = f"◼️ Delivery fee: {SYMBOL}{DELIVERY_FEE:.2f}"
+    #if subtotal >= FREE_DELIVERY_THRESHOLD:
+        #delivery = Decimal("0.00")
+        #delivery_line = f"◼️ *Free delivery!* (over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})"
+    #else:
+        #delivery = DELIVERY_FEE
+        #delivery_line = f"◼️ Delivery fee: {SYMBOL}{DELIVERY_FEE:.2f}"
 
-    total = (subtotal + delivery).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    total = (subtotal).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
     text += (
         f"\nTotal items: {total_items}\n"
         f"{delivery_line}\n"
-        f"💰 *Total: {SYMBOL}{total:.2f}*"
+        f"*Total: {SYMBOL}{total:.2f}*"
     )
 
     return (text, True)
