@@ -773,7 +773,9 @@ def begin_checkout(callback):
         parse_mode="Markdown",
     )
 
-    prompt_next_field(
+    # NOW the missing line:
+    prompt_next_field(chat_id, "name", step=0)
+
 
 
 
