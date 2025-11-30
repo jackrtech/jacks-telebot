@@ -666,7 +666,18 @@ def open_cart_callback(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
     bot.answer_callback_query(callback.id)
+
+    # DELETE OLD CART MESSAGE on purpose
+    old = user_cart_message.get(user_id)
+    if old:
+        try:
+            bot.delete_message(old[0], old[1])
+        except Exception:
+            pass
+
+    # Create NEW cart message
     refresh_cart_message(user_id, chat_id)
+
 
 
 @bot.message_handler(commands=["cart"])
@@ -674,14 +685,16 @@ def show_cart(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
-    if is_down(chat_id):
-        return
+    # DELETE OLD CART MESSAGE for manual /cart
+    old = user_cart_message.get(user_id)
+    if old:
+        try:
+            bot.delete_message(old[0], old[1])
+        except Exception:
+            pass
 
-    if check_and_handle_expiry(user_id, chat_id):
-        return
-
-    update_activity(user_id)
     refresh_cart_message(user_id, chat_id)
+
 
 
 @bot.callback_query_handler(func=lambda c: c.data == "clear_cart")
@@ -722,6 +735,14 @@ def begin_checkout(callback):
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
 
+    # --- DELETE OLD CART MESSAGE IF STARTING CHECKOUT ---
+    old = user_cart_message.get(user_id)
+    if old:
+        try:
+            bot.delete_message(old[0], old[1])
+        except:
+            pass
+
     cart = user_carts.get(user_id, {})
     if not cart:
         bot.send_message(chat_id, "🛍 Your cart is empty! Add stickers first with /order.")
@@ -732,6 +753,7 @@ def begin_checkout(callback):
 
     update_activity(user_id)
 
+    # Set initial checkout state
     user_states[user_id] = {"step": 0, "data": {}}
 
     subtotal = sum(
@@ -747,13 +769,12 @@ def begin_checkout(callback):
         f"🧾 *Your Order Summary:*\n\n"
         f"{summary}\n\n"
         f"Total: {SYMBOL}{subtotal:.2f}\n"
-        #f"🚚 Delivery: {SYMBOL}{DELIVERY_FEE:.2f} "
-        #f"(free over {SYMBOL}{FREE_DELIVERY_THRESHOLD:.2f})\n\n"
         "Enter Delivery Details:",
         parse_mode="Markdown",
     )
 
-    prompt_next_field(chat_id, "name", step=0)
+    prompt_next_field(
+
 
 
 # ----------------------------------------------------------------------
