@@ -246,6 +246,29 @@ def generate_order_id():
 # Helper functions: sessions, maintenance, menus, validation
 # ----------------------------------------------------------------------
 
+def validate_field(field, text):
+    """Basic validation for checkout fields."""
+    text = text.strip()
+
+    if field == "name":
+        return len(text) >= 2
+
+    if field == "house":
+        return len(text) >= 1
+
+    if field == "street":
+        return len(text) >= 2
+
+    if field == "city":
+        return len(text) >= 2
+
+    if field == "postcode":
+        # Very loose UK postcode check
+        return len(text) >= 4
+
+    return True
+
+
 # =====================================================
 #  DELIVERY MESSAGE EDITOR  (add near the top of bot.py)
 # =====================================================
