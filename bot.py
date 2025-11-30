@@ -389,7 +389,7 @@ def build_cart_text(user_id):
 
     text += (
         f"\nTotal items: {total_items}\n"
-        f"{delivery_line}\n"
+        #f"{delivery_line}\n"
         f"*Total: {SYMBOL}{total:.2f}*"
     )
 
